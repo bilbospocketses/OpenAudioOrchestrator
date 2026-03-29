@@ -1,5 +1,7 @@
+using Docker.DotNet;
 using FishAudioOrchestrator.Web.Components;
 using FishAudioOrchestrator.Web.Data;
+using FishAudioOrchestrator.Web.Services;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -10,6 +12,18 @@ builder.Services.AddRazorComponents()
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("Default")));
+
+// Docker client
+builder.Services.AddSingleton<IDockerClient>(_ =>
+{
+    var endpoint = builder.Configuration["FishOrchestrator:DockerEndpoint"]
+        ?? "npipe://./pipe/docker_engine";
+    return new DockerClientConfiguration(new Uri(endpoint)).CreateClient();
+});
+
+// Application services
+builder.Services.AddScoped<IContainerConfigService, ContainerConfigService>();
+builder.Services.AddScoped<IDockerOrchestratorService, DockerOrchestratorService>();
 
 var app = builder.Build();
 
