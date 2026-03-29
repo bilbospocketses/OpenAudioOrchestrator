@@ -27,7 +27,8 @@ public class ContainerConfigServiceTests
                 ["FishOrchestrator:PortRange:Start"] = portStart.ToString(),
                 ["FishOrchestrator:PortRange:End"] = portEnd.ToString(),
                 ["FishOrchestrator:DataRoot"] = dataRoot,
-                ["FishOrchestrator:DefaultImageTag"] = "fishaudio/fish-speech:server-cuda"
+                ["FishOrchestrator:DefaultImageTag"] = "fishaudio/fish-speech:server-cuda",
+                ["FishOrchestrator:DockerNetworkName"] = "fish-orchestrator"
             })
             .Build();
     }
@@ -168,6 +169,27 @@ public class ContainerConfigServiceTests
         var service = new ContainerConfigService(CreateConfig(portStart: 9001, portEnd: 9099), context);
         var port = await service.AllocatePortAsync();
         Assert.Equal(9002, port);
+    }
+
+    [Fact]
+    public void BuildCreateParams_AttachesToBridgeNetwork()
+    {
+        using var context = CreateInMemoryContext();
+        var service = new ContainerConfigService(CreateConfig(), context);
+        var profile = new ModelProfile
+        {
+            Name = "net-test",
+            CheckpointPath = @"D:\path",
+            ImageTag = "fishaudio/fish-speech:server-cuda",
+            HostPort = 9001,
+            EnableHalf = true,
+            Status = ModelStatus.Created
+        };
+
+        var result = service.BuildCreateParams(profile);
+
+        Assert.NotNull(result.NetworkingConfig);
+        Assert.True(result.NetworkingConfig.EndpointsConfig.ContainsKey("fish-orchestrator"));
     }
 
     [Fact]

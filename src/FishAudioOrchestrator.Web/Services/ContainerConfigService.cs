@@ -10,11 +10,13 @@ public class ContainerConfigService : IContainerConfigService
 {
     private readonly IConfiguration _config;
     private readonly AppDbContext _context;
+    private readonly string _networkName;
 
     public ContainerConfigService(IConfiguration config, AppDbContext context)
     {
         _config = config;
         _context = context;
+        _networkName = config["FishOrchestrator:DockerNetworkName"] ?? "fish-orchestrator";
     }
 
     public CreateContainerParameters BuildCreateParams(ModelProfile profile)
@@ -71,6 +73,13 @@ public class ContainerConfigService : IContainerConfigService
                             new List<string> { "gpu" }
                         }
                     }
+                }
+            },
+            NetworkingConfig = new NetworkingConfig
+            {
+                EndpointsConfig = new Dictionary<string, EndpointSettings>
+                {
+                    [_networkName] = new EndpointSettings()
                 }
             }
         };
