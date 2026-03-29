@@ -8,6 +8,8 @@ public class AppDbContext : DbContext
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
     public DbSet<ModelProfile> ModelProfiles => Set<ModelProfile>();
+    public DbSet<ReferenceVoice> ReferenceVoices => Set<ReferenceVoice>();
+    public DbSet<GenerationLog> GenerationLogs => Set<GenerationLog>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -21,6 +23,33 @@ public class AppDbContext : DbContext
             entity.Property(e => e.Status)
                 .HasConversion<string>()
                 .HasMaxLength(20);
+        });
+
+        modelBuilder.Entity<ReferenceVoice>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.VoiceId).IsUnique();
+            entity.Property(e => e.VoiceId).IsRequired().HasMaxLength(255);
+            entity.Property(e => e.DisplayName).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.AudioFileName).IsRequired().HasMaxLength(255);
+            entity.Property(e => e.TranscriptText).IsRequired();
+            entity.Property(e => e.Tags).HasMaxLength(500);
+        });
+
+        modelBuilder.Entity<GenerationLog>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.InputText).IsRequired();
+            entity.Property(e => e.OutputFileName).IsRequired().HasMaxLength(255);
+            entity.Property(e => e.Format).IsRequired().HasMaxLength(10);
+            entity.HasOne(e => e.ModelProfile)
+                .WithMany()
+                .HasForeignKey(e => e.ModelProfileId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.ReferenceVoice)
+                .WithMany()
+                .HasForeignKey(e => e.ReferenceVoiceId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
     }
 }
