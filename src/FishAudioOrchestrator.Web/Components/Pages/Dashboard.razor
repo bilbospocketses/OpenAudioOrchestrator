@@ -1,0 +1,201 @@
+@page "/"
+@inject AppDbContext Db
+@inject IDockerOrchestratorService Orchestrator
+@using Microsoft.EntityFrameworkCore
+@using FishAudioOrchestrator.Web.Data
+
+<PageTitle>Dashboard — Fish Orchestrator</PageTitle>
+
+<h2>Dashboard</h2>
+
+@if (_activeModel is not null)
+{
+    <div class="active-banner d-flex align-items-center">
+        <span class="status-dot running"></span>
+        <div class="flex-grow-1">
+            <strong>@_activeModel.Name</strong>
+            <small class="text-muted ms-2">
+                Port @_activeModel.HostPort · FP16 @(_activeModel.EnableHalf ? "enabled" : "disabled")
+                @if (_activeModel.LastStartedAt.HasValue)
+                {
+                    <text> · Started @_activeModel.LastStartedAt.Value.ToString("g")</text>
+                }
+            </small>
+        </div>
+        <button class="btn btn-sm btn-danger" @onclick="() => RequestStop(_activeModel)">Stop</button>
+    </div>
+}
+
+@if (_models.Count == 0)
+{
+    <div class="alert alert-info">
+        No models registered. <a href="/deploy">Deploy your first model</a>.
+    </div>
+}
+else
+{
+    <table class="table table-hover">
+        <thead>
+            <tr>
+                <th>Status</th>
+                <th>Name</th>
+                <th>Checkpoint</th>
+                <th>Port</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var model in _models)
+            {
+                <tr>
+                    <td>
+                        <span class="status-dot @model.Status.ToString().ToLower()"></span>
+                        <StatusBadge Status="model.Status" />
+                    </td>
+                    <td>@model.Name</td>
+                    <td><small class="text-muted">@model.CheckpointPath</small></td>
+                    <td>@model.HostPort</td>
+                    <td>
+                        @if (model.Status == ModelStatus.Running)
+                        {
+                            <button class="btn btn-sm btn-warning" @onclick="() => RequestStop(model)">Stop</button>
+                        }
+                        else
+                        {
+                            <button class="btn btn-sm btn-success" @onclick="() => RequestStart(model)"
+                                    disabled="@_isOperating">Start</button>
+                            <button class="btn btn-sm btn-danger ms-1" @onclick="() => RequestRemove(model)"
+                                    disabled="@_isOperating">Remove</button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-danger mt-3">@_error</div>
+}
+
+<ConfirmDialog @ref="_confirmDialog"
+               Title="@_confirmTitle"
+               Message="@_confirmMessage"
+               ConfirmText="@_confirmButtonText"
+               OnConfirm="_confirmAction" />
+
+@code {
+    private List<ModelProfile> _models = new();
+    private ModelProfile? _activeModel;
+    private bool _isOperating;
+    private string? _error;
+
+    private ConfirmDialog _confirmDialog = null!;
+    private string _confirmTitle = "";
+    private string _confirmMessage = "";
+    private string _confirmButtonText = "Confirm";
+    private EventCallback _confirmAction;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadModels();
+    }
+
+    private async Task LoadModels()
+    {
+        _models = await Db.ModelProfiles
+            .OrderByDescending(m => m.Status == ModelStatus.Running)
+            .ThenBy(m => m.Name)
+            .ToListAsync();
+        _activeModel = _models.FirstOrDefault(m => m.Status == ModelStatus.Running);
+    }
+
+    private void RequestStart(ModelProfile model)
+    {
+        _confirmTitle = "Start Model";
+        _confirmMessage = _activeModel is not null
+            ? $"This will stop '{_activeModel.Name}' before starting '{model.Name}'. Continue?"
+            : $"Start '{model.Name}'?";
+        _confirmButtonText = "Start";
+        _confirmAction = EventCallback.Factory.Create(this, () => StartModel(model));
+        _confirmDialog.Show();
+    }
+
+    private void RequestStop(ModelProfile model)
+    {
+        _confirmTitle = "Stop Model";
+        _confirmMessage = $"Stop '{model.Name}'?";
+        _confirmButtonText = "Stop";
+        _confirmAction = EventCallback.Factory.Create(this, () => StopModel(model));
+        _confirmDialog.Show();
+    }
+
+    private void RequestRemove(ModelProfile model)
+    {
+        _confirmTitle = "Remove Model";
+        _confirmMessage = $"Remove '{model.Name}'? This will delete the container (not the checkpoint files).";
+        _confirmButtonText = "Remove";
+        _confirmAction = EventCallback.Factory.Create(this, () => RemoveModel(model));
+        _confirmDialog.Show();
+    }
+
+    private async Task StartModel(ModelProfile model)
+    {
+        _isOperating = true;
+        _error = null;
+        try
+        {
+            await Orchestrator.SwapModelAsync(model);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to start model: {ex.Message}";
+        }
+        finally
+        {
+            _isOperating = false;
+            await LoadModels();
+        }
+    }
+
+    private async Task StopModel(ModelProfile model)
+    {
+        _isOperating = true;
+        _error = null;
+        try
+        {
+            await Orchestrator.StopModelAsync(model);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to stop model: {ex.Message}";
+        }
+        finally
+        {
+            _isOperating = false;
+            await LoadModels();
+        }
+    }
+
+    private async Task RemoveModel(ModelProfile model)
+    {
+        _isOperating = true;
+        _error = null;
+        try
+        {
+            await Orchestrator.RemoveModelAsync(model);
+            Db.ModelProfiles.Remove(model);
+            await Db.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to remove model: {ex.Message}";
+        }
+        finally
+        {
+            _isOperating = false;
+            await LoadModels();
+        }
+    }
+}

@@ -1,0 +1,164 @@
+@page "/deploy"
+@inject AppDbContext Db
+@inject IDockerOrchestratorService Orchestrator
+@inject IContainerConfigService ConfigService
+@inject NavigationManager Nav
+@inject IConfiguration Config
+@using Microsoft.EntityFrameworkCore
+@using FishAudioOrchestrator.Web.Data
+
+<PageTitle>Deploy — Fish Orchestrator</PageTitle>
+
+<h2>Deploy Fish Speech Model</h2>
+
+<div class="row">
+    <div class="col-md-8 col-lg-6">
+        <EditForm Model="_form" OnValidSubmit="HandleDeploy" FormName="deploy">
+            <DataAnnotationsValidator />
+
+            <div class="mb-3">
+                <label class="form-label">Model Name</label>
+                <InputText class="form-control" @bind-Value="_form.Name" placeholder="e.g. narrator-v2" />
+                <ValidationMessage For="() => _form.Name" />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Checkpoint Path</label>
+                <InputText class="form-control" @bind-Value="_form.CheckpointPath" />
+                <small class="text-muted">Must contain model checkpoint files</small>
+                <ValidationMessage For="() => _form.CheckpointPath" />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Image Tag</label>
+                <InputText class="form-control" @bind-Value="_form.ImageTag" />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">VRAM Config (optional)</label>
+                <InputText class="form-control" @bind-Value="_form.CudaAllocConf"
+                           placeholder="max_split_size_mb:512" />
+                <small class="text-muted">Sets PYTORCH_CUDA_ALLOC_CONF</small>
+            </div>
+
+            <div class="mb-3 form-check">
+                <InputCheckbox class="form-check-input" @bind-Value="_form.EnableHalf" />
+                <label class="form-check-label">Enable FP16 (--half)</label>
+                <small class="text-muted d-block">Recommended for ≤12GB VRAM</small>
+            </div>
+
+            @if (_activeModel is not null)
+            {
+                <div class="alert alert-warning">
+                    Deploying will stop the currently active model
+                    (<strong>@_activeModel.Name</strong>) before starting this one.
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <div class="alert alert-danger">@_error</div>
+            }
+
+            <button type="submit" class="btn btn-primary w-100" disabled="@_isDeploying">
+                @if (_isDeploying)
+                {
+                    <span class="spinner-border spinner-border-sm me-2"></span>
+                    <text>Deploying...</text>
+                }
+                else
+                {
+                    <text>Deploy Model</text>
+                }
+            </button>
+        </EditForm>
+    </div>
+</div>
+
+@code {
+    private DeployForm _form = new();
+    private ModelProfile? _activeModel;
+    private bool _isDeploying;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var dataRoot = Config["FishOrchestrator:DataRoot"] ?? @"D:\DockerData\FishAudio";
+        var defaultImage = Config["FishOrchestrator:DefaultImageTag"] ?? "fishaudio/fish-speech:server-cuda";
+
+        _form.CheckpointPath = Path.Combine(dataRoot, "Checkpoints") + Path.DirectorySeparatorChar;
+        _form.ImageTag = defaultImage;
+
+        _activeModel = await Db.ModelProfiles
+            .FirstOrDefaultAsync(m => m.Status == ModelStatus.Running);
+    }
+
+    private async Task HandleDeploy()
+    {
+        _error = null;
+
+        // Validate name uniqueness
+        if (await Db.ModelProfiles.AnyAsync(m => m.Name == _form.Name))
+        {
+            _error = $"A model named '{_form.Name}' already exists.";
+            return;
+        }
+
+        // Validate checkpoint path exists
+        if (!Directory.Exists(_form.CheckpointPath))
+        {
+            _error = $"Checkpoint path does not exist: {_form.CheckpointPath}";
+            return;
+        }
+
+        _isDeploying = true;
+        try
+        {
+            var port = await ConfigService.AllocatePortAsync();
+
+            var profile = new ModelProfile
+            {
+                Name = _form.Name!.Trim(),
+                CheckpointPath = _form.CheckpointPath!.Trim(),
+                ImageTag = _form.ImageTag!.Trim(),
+                HostPort = port,
+                EnableHalf = _form.EnableHalf,
+                CudaAllocConf = string.IsNullOrWhiteSpace(_form.CudaAllocConf)
+                    ? null : _form.CudaAllocConf.Trim(),
+                Status = ModelStatus.Created
+            };
+
+            Db.ModelProfiles.Add(profile);
+            await Db.SaveChangesAsync();
+
+            await Orchestrator.SwapModelAsync(profile);
+
+            Nav.NavigateTo("/");
+        }
+        catch (Exception ex)
+        {
+            _error = $"Deployment failed: {ex.Message}";
+        }
+        finally
+        {
+            _isDeploying = false;
+        }
+    }
+
+    private class DeployForm
+    {
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Model name is required")]
+        [System.ComponentModel.DataAnnotations.StringLength(100, MinimumLength = 1)]
+        public string? Name { get; set; }
+
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Checkpoint path is required")]
+        public string? CheckpointPath { get; set; }
+
+        [System.ComponentModel.DataAnnotations.Required]
+        public string? ImageTag { get; set; }
+
+        public string? CudaAllocConf { get; set; }
+
+        public bool EnableHalf { get; set; } = true;
+    }
+}
