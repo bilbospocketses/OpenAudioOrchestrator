@@ -42,8 +42,12 @@
                                 </audio>
                             </td>
                             <td>
-                                <button class="btn btn-sm btn-outline-primary" @onclick="() => StartEdit(voice)">Edit</button>
-                                <button class="btn btn-sm btn-outline-danger ms-1" @onclick="() => RequestDelete(voice)">Delete</button>
+                                <AuthorizeView Roles="Admin">
+                                    <Authorized>
+                                        <button class="btn btn-sm btn-outline-primary" @onclick="() => StartEdit(voice)">Edit</button>
+                                        <button class="btn btn-sm btn-outline-danger ms-1" @onclick="() => RequestDelete(voice)">Delete</button>
+                                    </Authorized>
+                                </AuthorizeView>
                             </td>
                         </tr>
                     }
@@ -51,83 +55,91 @@
             </table>
         }
 
-        <button class="btn btn-primary" @onclick="() => _showAddForm = !_showAddForm">
-            @(_showAddForm ? "Cancel" : "Add Voice")
-        </button>
+        <AuthorizeView Roles="Admin">
+            <Authorized>
+                <button class="btn btn-primary" @onclick="() => _showAddForm = !_showAddForm">
+                    @(_showAddForm ? "Cancel" : "Add Voice")
+                </button>
+            </Authorized>
+        </AuthorizeView>
     </div>
 
     <div class="col-lg-4">
-        @if (_showAddForm)
-        {
-            <div class="card">
-                <div class="card-body">
-                    <h5 class="card-title">Add Reference Voice</h5>
+        <AuthorizeView Roles="Admin">
+            <Authorized>
+                @if (_showAddForm)
+                {
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Add Reference Voice</h5>
 
-                    <div class="mb-3">
-                        <label class="form-label">Display Name</label>
-                        <input class="form-control" @bind="_addDisplayName" placeholder="e.g. Narrator" />
+                            <div class="mb-3">
+                                <label class="form-label">Display Name</label>
+                                <input class="form-control" @bind="_addDisplayName" placeholder="e.g. Narrator" />
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Voice ID</label>
+                                <input class="form-control" @bind="_addVoiceId" placeholder="e.g. narrator (alphanumeric, hyphens)" />
+                                <small class="text-muted">Used as directory name and API reference ID</small>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Audio File (.wav)</label>
+                                <InputFile class="form-control" OnChange="HandleFileUpload" accept=".wav" />
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Transcript Text</label>
+                                <textarea class="form-control" @bind="_addTranscript" rows="3"
+                                          placeholder="Exact text spoken in the audio file"></textarea>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Tags (optional)</label>
+                                <input class="form-control" @bind="_addTags" placeholder="e.g. male,english,narrator" />
+                            </div>
+
+                            @if (!string.IsNullOrEmpty(_error))
+                            {
+                                <div class="alert alert-danger">@_error</div>
+                            }
+
+                            <button class="btn btn-success w-100" @onclick="AddVoice" disabled="@_isAdding">
+                                @(_isAdding ? "Adding..." : "Add Voice")
+                            </button>
+                        </div>
                     </div>
+                }
 
-                    <div class="mb-3">
-                        <label class="form-label">Voice ID</label>
-                        <input class="form-control" @bind="_addVoiceId" placeholder="e.g. narrator (alphanumeric, hyphens)" />
-                        <small class="text-muted">Used as directory name and API reference ID</small>
+                @if (_editingVoice is not null)
+                {
+                    <div class="card mt-3">
+                        <div class="card-body">
+                            <h5 class="card-title">Edit: @_editingVoice.VoiceId</h5>
+
+                            <div class="mb-3">
+                                <label class="form-label">Display Name</label>
+                                <input class="form-control" @bind="_editDisplayName" />
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Transcript</label>
+                                <textarea class="form-control" @bind="_editTranscript" rows="3"></textarea>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Tags</label>
+                                <input class="form-control" @bind="_editTags" />
+                            </div>
+
+                            <button class="btn btn-primary w-100" @onclick="SaveEdit">Save</button>
+                            <button class="btn btn-secondary w-100 mt-1" @onclick="() => _editingVoice = null">Cancel</button>
+                        </div>
                     </div>
-
-                    <div class="mb-3">
-                        <label class="form-label">Audio File (.wav)</label>
-                        <InputFile class="form-control" OnChange="HandleFileUpload" accept=".wav" />
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label">Transcript Text</label>
-                        <textarea class="form-control" @bind="_addTranscript" rows="3"
-                                  placeholder="Exact text spoken in the audio file"></textarea>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label">Tags (optional)</label>
-                        <input class="form-control" @bind="_addTags" placeholder="e.g. male,english,narrator" />
-                    </div>
-
-                    @if (!string.IsNullOrEmpty(_error))
-                    {
-                        <div class="alert alert-danger">@_error</div>
-                    }
-
-                    <button class="btn btn-success w-100" @onclick="AddVoice" disabled="@_isAdding">
-                        @(_isAdding ? "Adding..." : "Add Voice")
-                    </button>
-                </div>
-            </div>
-        }
-
-        @if (_editingVoice is not null)
-        {
-            <div class="card mt-3">
-                <div class="card-body">
-                    <h5 class="card-title">Edit: @_editingVoice.VoiceId</h5>
-
-                    <div class="mb-3">
-                        <label class="form-label">Display Name</label>
-                        <input class="form-control" @bind="_editDisplayName" />
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label">Transcript</label>
-                        <textarea class="form-control" @bind="_editTranscript" rows="3"></textarea>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label">Tags</label>
-                        <input class="form-control" @bind="_editTags" />
-                    </div>
-
-                    <button class="btn btn-primary w-100" @onclick="SaveEdit">Save</button>
-                    <button class="btn btn-secondary w-100 mt-1" @onclick="() => _editingVoice = null">Cancel</button>
-                </div>
-            </div>
-        }
+                }
+            </Authorized>
+        </AuthorizeView>
     </div>
 </div>
 

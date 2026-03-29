@@ -40,9 +40,10 @@
     private TotpModel _model = new();
     private string? _error;
     private bool _loading;
+    private AppUser? _user;
 
-    [CascadingParameter]
-    private Task<AuthenticationState>? AuthState { get; set; }
+    [SupplyParameterFromQuery(Name = "uid")]
+    private string? UserId { get; set; }
 
     private sealed class TotpModel
     {
@@ -51,13 +52,16 @@
 
     protected override async Task OnInitializedAsync()
     {
-        if (AuthState is not null)
+        if (string.IsNullOrEmpty(UserId))
         {
-            var state = await AuthState;
-            if (state.User.Identity?.IsAuthenticated != true)
-            {
-                Nav.NavigateTo("/login", forceLoad: true);
-            }
+            Nav.NavigateTo("/login", forceLoad: true);
+            return;
+        }
+
+        _user = await UserManager.FindByIdAsync(UserId);
+        if (_user is null)
+        {
+            Nav.NavigateTo("/login", forceLoad: true);
         }
     }
 
@@ -66,21 +70,13 @@
         _error = null;
         _loading = true;
 
-        if (AuthState is null)
+        if (_user is null)
         {
             Nav.NavigateTo("/login", forceLoad: true);
             return;
         }
 
-        var state = await AuthState;
-        var user = await UserManager.GetUserAsync(state.User);
-        if (user is null)
-        {
-            Nav.NavigateTo("/login", forceLoad: true);
-            return;
-        }
-
-        var isValid = await UserManager.VerifyTwoFactorTokenAsync(user,
+        var isValid = await UserManager.VerifyTwoFactorTokenAsync(_user,
             UserManager.Options.Tokens.AuthenticatorTokenProvider, _model.Code.Trim());
 
         if (!isValid)
@@ -90,6 +86,7 @@
             return;
         }
 
+        await SignInManager.SignInAsync(_user, isPersistent: false);
         Nav.NavigateTo("/", forceLoad: true);
     }
 }

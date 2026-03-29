@@ -16,7 +16,11 @@ public class SetupGuardMiddleware
     {
         if (context.Request.Path.StartsWithSegments("/setup")
             || context.Request.Path.StartsWithSegments("/_framework")
-            || context.Request.Path.StartsWithSegments("/_blazor"))
+            || context.Request.Path.StartsWithSegments("/_blazor")
+            || context.Request.Path.StartsWithSegments("/_content")
+            || context.Request.Path.StartsWithSegments("/css")
+            || context.Request.Path.StartsWithSegments("/audio")
+            || context.Request.Path.Value?.Contains('.') == true)
         {
             await _next(context);
             return;

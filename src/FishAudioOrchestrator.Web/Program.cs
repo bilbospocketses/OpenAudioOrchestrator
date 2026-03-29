@@ -123,7 +123,15 @@ if (!app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-// Serve audio files from the data directories
+// Auth middleware
+app.UseAuthentication();
+app.UseAuthorization();
+
+// Custom middleware
+app.UseMiddleware<SetupGuardMiddleware>();
+app.UseMiddleware<PostLoginRedirectMiddleware>();
+
+// Serve audio files from the data directories (after auth so only authenticated users can access)
 var dataRoot = app.Configuration["FishOrchestrator:DataRoot"] ?? @"D:\DockerData\FishAudio";
 
 var outputDir = Path.Combine(dataRoot, "Output");
@@ -145,14 +153,6 @@ if (Directory.Exists(referencesDir))
         RequestPath = "/audio/references"
     });
 }
-
-// Auth middleware
-app.UseAuthentication();
-app.UseAuthorization();
-
-// Custom middleware
-app.UseMiddleware<SetupGuardMiddleware>();
-app.UseMiddleware<PostLoginRedirectMiddleware>();
 
 app.UseAntiforgery();
 

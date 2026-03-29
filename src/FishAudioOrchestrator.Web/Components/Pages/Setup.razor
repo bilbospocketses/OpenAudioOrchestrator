@@ -156,7 +156,7 @@
             UserName = _adminModel.Username,
             DisplayName = _adminModel.DisplayName,
             MustChangePassword = false,
-            MustSetupTotp = false,
+            MustSetupTotp = true,
             CreatedAt = DateTimeOffset.UtcNow
         };
 
@@ -197,6 +197,9 @@
         }
 
         await UserManager.SetTwoFactorEnabledAsync(_createdUser, true);
+
+        _createdUser.MustSetupTotp = false;
+        await UserManager.UpdateAsync(_createdUser);
 
         if (!string.IsNullOrWhiteSpace(_fqdn))
         {

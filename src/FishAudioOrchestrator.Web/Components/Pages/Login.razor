@@ -71,8 +71,7 @@
         var hasTwoFactor = await UserManager.GetTwoFactorEnabledAsync(user);
         if (hasTwoFactor)
         {
-            await SignInManager.SignInAsync(user, isPersistent: false);
-            Nav.NavigateTo("/login/totp", forceLoad: true);
+            Nav.NavigateTo($"/login/totp?uid={user.Id}", forceLoad: true);
             return;
         }
 

@@ -292,7 +292,7 @@
         _resetUser = null;
     }
 
-    private async void StartDelete(UserRow u)
+    private async Task StartDelete(UserRow u)
     {
         var state = await AuthState;
         var currentUser = await UserManager.GetUserAsync(state.User);
