@@ -1,9 +1,11 @@
 using FishAudioOrchestrator.Web.Data.Entities;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
 namespace FishAudioOrchestrator.Web.Data;
 
-public class AppDbContext : DbContext
+public class AppDbContext : IdentityDbContext<AppUser>
 {
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
@@ -13,6 +15,8 @@ public class AppDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        base.OnModelCreating(modelBuilder);
+
         modelBuilder.Entity<ModelProfile>(entity =>
         {
             entity.HasKey(e => e.Id);
@@ -50,6 +54,15 @@ public class AppDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(e => e.ReferenceVoiceId)
                 .OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<AppUser>(entity =>
+        {
+            entity.Property(e => e.DisplayName).HasMaxLength(100);
         });
     }
 }
