@@ -1,0 +1,270 @@
+@page "/setup"
+@using Microsoft.AspNetCore.Identity
+@inject UserManager<AppUser> UserManager
+@inject RoleManager<IdentityRole> RoleManager
+@inject SignInManager<AppUser> SignInManager
+@inject ITotpService TotpService
+@inject IConfiguration Config
+@inject IWebHostEnvironment Env
+@inject NavigationManager Nav
+@layout EmptyLayout
+
+<PageTitle>Setup — Fish Orchestrator</PageTitle>
+
+<div class="d-flex justify-content-center align-items-center min-vh-100 bg-dark py-4">
+    <div class="card bg-dark text-light border-secondary" style="width: 500px;">
+        <div class="card-body">
+            <h3 class="card-title text-center mb-4">Fish Orchestrator Setup</h3>
+
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <div class="alert alert-danger">@_error</div>
+            }
+
+            @if (_step == 1)
+            {
+                <h5>Step 1: Network Configuration</h5>
+                <p class="text-muted">Optionally provide a fully qualified domain name for automatic HTTPS via Let's Encrypt. Leave blank for localhost/LAN use.</p>
+                <div class="mb-3">
+                    <label class="form-label">Domain (FQDN)</label>
+                    <InputText @bind-Value="_fqdn" class="form-control bg-dark text-light border-secondary"
+                               placeholder="e.g. fish.example.com" />
+                </div>
+                <button class="btn btn-primary w-100" @onclick="GoToStep2">Next</button>
+            }
+            else if (_step == 2)
+            {
+                <h5>Step 2: Create Admin Account</h5>
+                <EditForm Model="_adminModel" OnValidSubmit="GoToStep3" FormName="setup-admin">
+                    <div class="mb-3">
+                        <label class="form-label">Username</label>
+                        <InputText @bind-Value="_adminModel.Username" class="form-control bg-dark text-light border-secondary" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Display Name</label>
+                        <InputText @bind-Value="_adminModel.DisplayName" class="form-control bg-dark text-light border-secondary" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Password</label>
+                        <InputText @bind-Value="_adminModel.Password" type="password" class="form-control bg-dark text-light border-secondary" />
+                        <div class="form-text text-muted">8+ characters, upper, lower, digit, special character.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Confirm Password</label>
+                        <InputText @bind-Value="_adminModel.ConfirmPassword" type="password" class="form-control bg-dark text-light border-secondary" />
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Next</button>
+                </EditForm>
+            }
+            else if (_step == 3)
+            {
+                <h5>Step 3: TOTP Setup</h5>
+                <p class="text-muted">Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.).</p>
+
+                @if (!string.IsNullOrEmpty(_qrDataUri))
+                {
+                    <div class="text-center mb-3">
+                        <img src="@_qrDataUri" alt="TOTP QR Code" style="width: 200px; height: 200px;" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Manual Key</label>
+                        <input type="text" readonly class="form-control bg-dark text-light border-secondary text-center" value="@_manualKey" />
+                    </div>
+                }
+
+                <div class="mb-3">
+                    <label class="form-label">Enter 6-digit code to verify</label>
+                    <InputText @bind-Value="_totpCode" class="form-control bg-dark text-light border-secondary text-center" maxlength="6" />
+                </div>
+                <button class="btn btn-primary w-100" @onclick="VerifyTotpAndComplete" disabled="@_loading">
+                    @(_loading ? "Completing setup..." : "Complete Setup")
+                </button>
+            }
+            else if (_step == 4)
+            {
+                <h5>Setup Complete</h5>
+                <div class="alert alert-success">
+                    <p><strong>Admin account created:</strong> @_adminModel.Username</p>
+                    <p><strong>TOTP:</strong> Enabled</p>
+                    @if (!string.IsNullOrWhiteSpace(_fqdn))
+                    {
+                        <p><strong>Domain:</strong> @_fqdn</p>
+                        <p class="text-warning mb-0">Restart the application to enable automatic HTTPS certificate provisioning.</p>
+                    }
+                </div>
+                <button class="btn btn-primary w-100" @onclick="GoToDashboard">Go to Dashboard</button>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private int _step = 1;
+    private string _fqdn = "";
+    private AdminModel _adminModel = new();
+    private string? _qrDataUri;
+    private string? _manualKey;
+    private string _totpCode = "";
+    private string? _error;
+    private bool _loading;
+    private AppUser? _createdUser;
+
+    private sealed class AdminModel
+    {
+        public string Username { get; set; } = "";
+        public string DisplayName { get; set; } = "";
+        public string Password { get; set; } = "";
+        public string ConfirmPassword { get; set; } = "";
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (UserManager.Users.Any())
+        {
+            Nav.NavigateTo("/", forceLoad: true);
+        }
+    }
+
+    private void GoToStep2()
+    {
+        _error = null;
+        _step = 2;
+    }
+
+    private async Task GoToStep3()
+    {
+        _error = null;
+
+        if (string.IsNullOrWhiteSpace(_adminModel.Username))
+        {
+            _error = "Username is required.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(_adminModel.DisplayName))
+        {
+            _error = "Display name is required.";
+            return;
+        }
+        if (_adminModel.Password != _adminModel.ConfirmPassword)
+        {
+            _error = "Passwords do not match.";
+            return;
+        }
+
+        var user = new AppUser
+        {
+            UserName = _adminModel.Username,
+            DisplayName = _adminModel.DisplayName,
+            MustChangePassword = false,
+            MustSetupTotp = false,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+
+        var result = await UserManager.CreateAsync(user, _adminModel.Password);
+        if (!result.Succeeded)
+        {
+            _error = string.Join(" ", result.Errors.Select(e => e.Description));
+            return;
+        }
+
+        await UserManager.AddToRoleAsync(user, "Admin");
+        _createdUser = user;
+
+        var (manualKey, qrDataUri) = await TotpService.GenerateSetupInfoAsync(user, "FishOrchestrator");
+        _manualKey = manualKey;
+        _qrDataUri = qrDataUri;
+        _step = 3;
+    }
+
+    private async Task VerifyTotpAndComplete()
+    {
+        _error = null;
+        _loading = true;
+
+        if (_createdUser is null)
+        {
+            _error = "Setup error. Please refresh and start over.";
+            _loading = false;
+            return;
+        }
+
+        var isValid = await TotpService.VerifyCodeAsync(_createdUser, _totpCode.Trim());
+        if (!isValid)
+        {
+            _error = "Invalid code. Please try again.";
+            _loading = false;
+            return;
+        }
+
+        await UserManager.SetTwoFactorEnabledAsync(_createdUser, true);
+
+        if (!string.IsNullOrWhiteSpace(_fqdn))
+        {
+            await SaveFqdnToSettings(_fqdn.Trim());
+        }
+
+        _step = 4;
+        _loading = false;
+    }
+
+    private async Task SaveFqdnToSettings(string fqdn)
+    {
+        var settingsPath = Path.Combine(Env.ContentRootPath, "appsettings.json");
+        if (!File.Exists(settingsPath)) return;
+
+        var json = await File.ReadAllTextAsync(settingsPath);
+        var doc = System.Text.Json.JsonDocument.Parse(json);
+        using var stream = new MemoryStream();
+        using var writer = new System.Text.Json.Utf8JsonWriter(stream, new System.Text.Json.JsonWriterOptions { Indented = true });
+        writer.WriteStartObject();
+
+        foreach (var prop in doc.RootElement.EnumerateObject())
+        {
+            if (prop.Name == "FishOrchestrator")
+            {
+                writer.WriteStartObject("FishOrchestrator");
+                foreach (var sub in prop.Value.EnumerateObject())
+                {
+                    if (sub.Name == "Domain")
+                        writer.WriteString("Domain", fqdn);
+                    else
+                        sub.WriteTo(writer);
+                }
+                writer.WriteEndObject();
+            }
+            else if (prop.Name == "LettuceEncrypt")
+            {
+                writer.WriteStartObject("LettuceEncrypt");
+                foreach (var sub in prop.Value.EnumerateObject())
+                {
+                    if (sub.Name == "DomainNames")
+                    {
+                        writer.WriteStartArray("DomainNames");
+                        writer.WriteStringValue(fqdn);
+                        writer.WriteEndArray();
+                    }
+                    else
+                        sub.WriteTo(writer);
+                }
+                writer.WriteEndObject();
+            }
+            else
+            {
+                prop.WriteTo(writer);
+            }
+        }
+
+        writer.WriteEndObject();
+        await writer.FlushAsync();
+        await File.WriteAllBytesAsync(settingsPath, stream.ToArray());
+    }
+
+    private async Task GoToDashboard()
+    {
+        if (_createdUser is not null)
+        {
+            await SignInManager.SignInAsync(_createdUser, isPersistent: false);
+        }
+        Nav.NavigateTo("/", forceLoad: true);
+    }
+}
