@@ -3,6 +3,8 @@
 @inject AppDbContext Db
 @using Microsoft.EntityFrameworkCore
 @using FishAudioOrchestrator.Web.Data
+@using Microsoft.AspNetCore.Identity
+@inject UserManager<AppUser> UserManager
 
 <PageTitle>Generation History — Fish Orchestrator</PageTitle>
 
@@ -57,14 +59,25 @@ else
 @code {
     private List<GenerationLog> _logs = new();
 
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthState { get; set; } = null!;
+
     protected override async Task OnInitializedAsync()
     {
-        _logs = await Db.GenerationLogs
-            .Include(g => g.ModelProfile)
-            .Include(g => g.ReferenceVoice)
-            .OrderByDescending(g => g.CreatedAt)
-            .Take(100)
-            .ToListAsync();
+        var state = await AuthState;
+        var user = await UserManager.GetUserAsync(state.User);
+        var isAdmin = state.User.IsInRole("Admin");
+
+        IQueryable<GenerationLog> query = Db.GenerationLogs
+            .Include(l => l.ModelProfile)
+            .Include(l => l.ReferenceVoice);
+
+        if (!isAdmin && user is not null)
+        {
+            query = query.Where(l => l.UserId == user.Id);
+        }
+
+        _logs = await query.OrderByDescending(l => l.CreatedAt).ToListAsync();
     }
 
     private static string Truncate(string text, int maxLength) =>
