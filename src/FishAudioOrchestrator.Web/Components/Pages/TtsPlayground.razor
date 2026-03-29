@@ -1,0 +1,153 @@
+@page "/playground"
+@inject ITtsClientService TtsClient
+@inject IVoiceLibraryService VoiceService
+@inject AppDbContext Db
+@using Microsoft.EntityFrameworkCore
+@using FishAudioOrchestrator.Web.Data
+
+<PageTitle>TTS Playground — Fish Orchestrator</PageTitle>
+
+<h2>TTS Playground</h2>
+
+@if (_activeModel is null)
+{
+    <div class="alert alert-warning">
+        No model is currently running. <a href="/">Start a model</a> from the dashboard first.
+    </div>
+}
+else
+{
+    <div class="row">
+        <div class="col-md-8 col-lg-6">
+            <div class="card">
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label">Active Model</label>
+                        <input class="form-control" value="@_activeModel.Name (port @_activeModel.HostPort)" disabled />
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Reference Voice (optional)</label>
+                        <select class="form-select" @bind="_selectedVoiceId">
+                            <option value="">-- Default voice (no reference) --</option>
+                            @foreach (var voice in _voices)
+                            {
+                                <option value="@voice.VoiceId">@voice.DisplayName (@voice.VoiceId)</option>
+                            }
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Text to Synthesize</label>
+                        <textarea class="form-control" @bind="_inputText" rows="5"
+                                  placeholder="Enter text to convert to speech..."></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Output Format</label>
+                        <select class="form-select" @bind="_format">
+                            <option value="wav">WAV</option>
+                            <option value="mp3">MP3</option>
+                            <option value="opus">Opus</option>
+                        </select>
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(_error))
+                    {
+                        <div class="alert alert-danger">@_error</div>
+                    }
+
+                    <button class="btn btn-primary w-100" @onclick="Generate" disabled="@_isGenerating">
+                        @if (_isGenerating)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2"></span>
+                            <text>Generating...</text>
+                        }
+                        else
+                        {
+                            <text>Generate Speech</text>
+                        }
+                    </button>
+                </div>
+            </div>
+
+            @if (_lastResult is not null)
+            {
+                <div class="card mt-3">
+                    <div class="card-body">
+                        <h5 class="card-title">Result</h5>
+                        <p class="text-muted">Generated in @_lastResult.DurationMs ms</p>
+                        <audio controls class="w-100">
+                            <source src="/audio/output/@_lastResult.OutputFileName" />
+                        </audio>
+                        <a href="/audio/output/@_lastResult.OutputFileName" download
+                           class="btn btn-sm btn-outline-primary mt-2">Download</a>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private ModelProfile? _activeModel;
+    private List<ReferenceVoice> _voices = new();
+    private string _selectedVoiceId = "";
+    private string _inputText = "";
+    private string _format = "wav";
+    private bool _isGenerating;
+    private string? _error;
+    private TtsResult? _lastResult;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _activeModel = await Db.ModelProfiles
+            .FirstOrDefaultAsync(m => m.Status == ModelStatus.Running);
+        _voices = await VoiceService.ListVoicesAsync();
+    }
+
+    private async Task Generate()
+    {
+        if (string.IsNullOrWhiteSpace(_inputText))
+        {
+            _error = "Please enter text to synthesize.";
+            return;
+        }
+
+        if (_activeModel is null) return;
+
+        _error = null;
+        _isGenerating = true;
+        _lastResult = null;
+
+        try
+        {
+            var request = new TtsRequest
+            {
+                Text = _inputText.Trim(),
+                ReferenceId = string.IsNullOrEmpty(_selectedVoiceId) ? null : _selectedVoiceId,
+                Format = _format
+            };
+
+            int? voiceDbId = null;
+            if (!string.IsNullOrEmpty(_selectedVoiceId))
+            {
+                var voice = await Db.ReferenceVoices
+                    .FirstOrDefaultAsync(v => v.VoiceId == _selectedVoiceId);
+                voiceDbId = voice?.Id;
+            }
+
+            var baseUrl = $"http://localhost:{_activeModel.HostPort}";
+            _lastResult = await TtsClient.GenerateAsync(baseUrl, request,
+                _activeModel.Id, voiceDbId);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Generation failed: {ex.Message}";
+        }
+        finally
+        {
+            _isGenerating = false;
+        }
+    }
+}

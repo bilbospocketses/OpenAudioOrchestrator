@@ -1,0 +1,71 @@
+@page "/history"
+@inject AppDbContext Db
+@using Microsoft.EntityFrameworkCore
+@using FishAudioOrchestrator.Web.Data
+
+<PageTitle>Generation History — Fish Orchestrator</PageTitle>
+
+<h2>Generation History</h2>
+
+@if (_logs.Count == 0)
+{
+    <div class="alert alert-info">
+        No generations yet. Use the <a href="/playground">TTS Playground</a> to generate speech.
+    </div>
+}
+else
+{
+    <table class="table table-hover">
+        <thead>
+            <tr>
+                <th>Time</th>
+                <th>Model</th>
+                <th>Voice</th>
+                <th>Text</th>
+                <th>Format</th>
+                <th>Duration</th>
+                <th>Audio</th>
+                <th>Download</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var log in _logs)
+            {
+                <tr>
+                    <td><small>@log.CreatedAt.ToLocalTime().ToString("g")</small></td>
+                    <td>@log.ModelProfile.Name</td>
+                    <td>@(log.ReferenceVoice?.DisplayName ?? "—")</td>
+                    <td><small class="text-muted">@Truncate(log.InputText, 60)</small></td>
+                    <td><code>@log.Format</code></td>
+                    <td>@log.DurationMs ms</td>
+                    <td>
+                        <audio controls preload="none" style="height: 30px; max-width: 200px;">
+                            <source src="/audio/output/@log.OutputFileName" />
+                        </audio>
+                    </td>
+                    <td>
+                        <a href="/audio/output/@log.OutputFileName" download
+                           class="btn btn-sm btn-outline-primary">DL</a>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<GenerationLog> _logs = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _logs = await Db.GenerationLogs
+            .Include(g => g.ModelProfile)
+            .Include(g => g.ReferenceVoice)
+            .OrderByDescending(g => g.CreatedAt)
+            .Take(100)
+            .ToListAsync();
+    }
+
+    private static string Truncate(string text, int maxLength) =>
+        text.Length <= maxLength ? text : text[..maxLength] + "...";
+}
