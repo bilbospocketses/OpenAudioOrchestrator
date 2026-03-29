@@ -1,0 +1,95 @@
+@page "/login/totp"
+@using Microsoft.AspNetCore.Identity
+@inject SignInManager<AppUser> SignInManager
+@inject UserManager<AppUser> UserManager
+@inject NavigationManager Nav
+@layout EmptyLayout
+
+<PageTitle>Verify TOTP — Fish Orchestrator</PageTitle>
+
+<div class="d-flex justify-content-center align-items-center vh-100 bg-dark">
+    <div class="card bg-dark text-light border-secondary" style="width: 400px;">
+        <div class="card-body">
+            <h3 class="card-title text-center mb-4">Two-Factor Authentication</h3>
+            <p class="text-muted text-center">Enter the 6-digit code from your authenticator app.</p>
+
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <div class="alert alert-danger">@_error</div>
+            }
+
+            <EditForm Model="_model" OnValidSubmit="HandleVerify" FormName="totp">
+                <div class="mb-3">
+                    <label class="form-label">Code</label>
+                    <InputText @bind-Value="_model.Code" class="form-control bg-dark text-light border-secondary text-center"
+                               maxlength="6" autocomplete="one-time-code" />
+                </div>
+                <button type="submit" class="btn btn-primary w-100" disabled="@_loading">
+                    @(_loading ? "Verifying..." : "Verify")
+                </button>
+            </EditForm>
+
+            <div class="text-center mt-3">
+                <a href="/login" class="text-muted">Back to login</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private TotpModel _model = new();
+    private string? _error;
+    private bool _loading;
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    private sealed class TotpModel
+    {
+        public string Code { get; set; } = "";
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is not null)
+        {
+            var state = await AuthState;
+            if (state.User.Identity?.IsAuthenticated != true)
+            {
+                Nav.NavigateTo("/login", forceLoad: true);
+            }
+        }
+    }
+
+    private async Task HandleVerify()
+    {
+        _error = null;
+        _loading = true;
+
+        if (AuthState is null)
+        {
+            Nav.NavigateTo("/login", forceLoad: true);
+            return;
+        }
+
+        var state = await AuthState;
+        var user = await UserManager.GetUserAsync(state.User);
+        if (user is null)
+        {
+            Nav.NavigateTo("/login", forceLoad: true);
+            return;
+        }
+
+        var isValid = await UserManager.VerifyTwoFactorTokenAsync(user,
+            UserManager.Options.Tokens.AuthenticatorTokenProvider, _model.Code.Trim());
+
+        if (!isValid)
+        {
+            _error = "Invalid code. Please try again.";
+            _loading = false;
+            return;
+        }
+
+        Nav.NavigateTo("/", forceLoad: true);
+    }
+}

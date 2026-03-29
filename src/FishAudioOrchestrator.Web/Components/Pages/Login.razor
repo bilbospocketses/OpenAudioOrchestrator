@@ -1,0 +1,82 @@
+@page "/login"
+@using Microsoft.AspNetCore.Identity
+@inject SignInManager<AppUser> SignInManager
+@inject UserManager<AppUser> UserManager
+@inject NavigationManager Nav
+@layout EmptyLayout
+
+<PageTitle>Login — Fish Orchestrator</PageTitle>
+
+<div class="d-flex justify-content-center align-items-center vh-100 bg-dark">
+    <div class="card bg-dark text-light border-secondary" style="width: 400px;">
+        <div class="card-body">
+            <h3 class="card-title text-center mb-4">Fish Orchestrator</h3>
+
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <div class="alert alert-danger">@_error</div>
+            }
+
+            <EditForm Model="_model" OnValidSubmit="HandleLogin" FormName="login">
+                <div class="mb-3">
+                    <label class="form-label">Username</label>
+                    <InputText @bind-Value="_model.Username" class="form-control bg-dark text-light border-secondary" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Password</label>
+                    <InputText @bind-Value="_model.Password" type="password" class="form-control bg-dark text-light border-secondary" />
+                </div>
+                <button type="submit" class="btn btn-primary w-100" disabled="@_loading">
+                    @(_loading ? "Signing in..." : "Sign In")
+                </button>
+            </EditForm>
+        </div>
+    </div>
+</div>
+
+@code {
+    private LoginModel _model = new();
+    private string? _error;
+    private bool _loading;
+
+    private sealed class LoginModel
+    {
+        public string Username { get; set; } = "";
+        public string Password { get; set; } = "";
+    }
+
+    private async Task HandleLogin()
+    {
+        _error = null;
+        _loading = true;
+
+        var user = await UserManager.FindByNameAsync(_model.Username);
+        if (user is null)
+        {
+            _error = "Invalid username or password.";
+            _loading = false;
+            return;
+        }
+
+        var result = await SignInManager.CheckPasswordSignInAsync(user, _model.Password, lockoutOnFailure: true);
+        if (!result.Succeeded)
+        {
+            _error = result.IsLockedOut
+                ? "Account locked. Try again later."
+                : "Invalid username or password.";
+            _loading = false;
+            return;
+        }
+
+        var hasTwoFactor = await UserManager.GetTwoFactorEnabledAsync(user);
+        if (hasTwoFactor)
+        {
+            await SignInManager.SignInAsync(user, isPersistent: false);
+            Nav.NavigateTo("/login/totp", forceLoad: true);
+            return;
+        }
+
+        await SignInManager.SignInAsync(user, isPersistent: false);
+        Nav.NavigateTo("/", forceLoad: true);
+    }
+}
