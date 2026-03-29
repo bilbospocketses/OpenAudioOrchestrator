@@ -3,6 +3,7 @@ using FishAudioOrchestrator.Web.Components;
 using FishAudioOrchestrator.Web.Data;
 using FishAudioOrchestrator.Web.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.FileProviders;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -24,6 +25,8 @@ builder.Services.AddSingleton<IDockerClient>(_ =>
 // Application services
 builder.Services.AddScoped<IContainerConfigService, ContainerConfigService>();
 builder.Services.AddScoped<IDockerOrchestratorService, DockerOrchestratorService>();
+builder.Services.AddScoped<IVoiceLibraryService, VoiceLibraryService>();
+builder.Services.AddHttpClient<ITtsClientService, TtsClientService>();
 
 var app = builder.Build();
 
@@ -37,12 +40,33 @@ using (var scope = app.Services.CreateScope())
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
 }
 
 app.UseHttpsRedirection();
 
+// Serve audio files from the data directories
+var dataRoot = app.Configuration["FishOrchestrator:DataRoot"] ?? @"D:\DockerData\FishAudio";
+
+var outputDir = Path.Combine(dataRoot, "Output");
+if (Directory.Exists(outputDir))
+{
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        FileProvider = new PhysicalFileProvider(outputDir),
+        RequestPath = "/audio/output"
+    });
+}
+
+var referencesDir = Path.Combine(dataRoot, "References");
+if (Directory.Exists(referencesDir))
+{
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        FileProvider = new PhysicalFileProvider(referencesDir),
+        RequestPath = "/audio/references"
+    });
+}
 
 app.UseAntiforgery();
 
