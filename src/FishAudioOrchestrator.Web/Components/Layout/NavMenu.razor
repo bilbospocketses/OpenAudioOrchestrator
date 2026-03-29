@@ -1,0 +1,44 @@
+<nav class="navbar navbar-expand navbar-dark bg-dark px-3">
+    <a class="navbar-brand" href="/">Fish Orchestrator</a>
+    <div class="navbar-nav">
+        <NavLink class="nav-link" href="/" Match="NavLinkMatch.All">Dashboard</NavLink>
+        <NavLink class="nav-link" href="/deploy">Deploy</NavLink>
+    </div>
+    <div class="navbar-nav ms-auto">
+        <span class="nav-link text-muted" id="gpu-indicator">@_gpuInfo</span>
+    </div>
+</nav>
+
+@code {
+    private string _gpuInfo = "GPU: loading...";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "nvidia-smi",
+                Arguments = "--query-gpu=memory.used,memory.total --format=csv,noheader,nounits",
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            using var process = System.Diagnostics.Process.Start(psi);
+            if (process is not null)
+            {
+                var output = await process.StandardOutput.ReadToEndAsync();
+                await process.WaitForExitAsync();
+                var parts = output.Trim().Split(',');
+                if (parts.Length == 2)
+                {
+                    _gpuInfo = $"GPU: {parts[0].Trim()} / {parts[1].Trim()} MB";
+                }
+            }
+        }
+        catch
+        {
+            _gpuInfo = "GPU: N/A";
+        }
+    }
+}

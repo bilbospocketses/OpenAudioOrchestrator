@@ -1,0 +1,73 @@
+body {
+    background-color: #1a1a2e;
+    color: #e2e8f0;
+}
+
+.navbar {
+    border-bottom: 1px solid #333;
+}
+
+.table {
+    color: #e2e8f0;
+}
+
+.card {
+    background-color: #16213e;
+    border-color: #333;
+}
+
+.form-control, .form-select {
+    background-color: #0f3460;
+    border-color: #444;
+    color: #e2e8f0;
+}
+
+.form-control:focus, .form-select:focus {
+    background-color: #0f3460;
+    border-color: #60a5fa;
+    color: #e2e8f0;
+}
+
+.form-check-input:checked {
+    background-color: #60a5fa;
+    border-color: #60a5fa;
+}
+
+.active-banner {
+    background-color: rgba(16, 185, 129, 0.1);
+    border: 1px solid #10b981;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+
+.status-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 8px;
+}
+
+.status-dot.running {
+    background-color: #10b981;
+    box-shadow: 0 0 6px #10b981;
+}
+
+.status-dot.stopped {
+    background-color: #666;
+}
+
+.status-dot.error {
+    background-color: #ef4444;
+    box-shadow: 0 0 6px #ef4444;
+}
+
+.status-dot.created {
+    background-color: #60a5fa;
+}
+
+.modal-content {
+    background-color: #16213e;
+    color: #e2e8f0;
+}
