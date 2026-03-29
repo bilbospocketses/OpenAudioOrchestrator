@@ -1,6 +1,7 @@
 using Docker.DotNet;
 using FishAudioOrchestrator.Web.Components;
 using FishAudioOrchestrator.Web.Data;
+using FishAudioOrchestrator.Web.Proxy;
 using FishAudioOrchestrator.Web.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
@@ -22,18 +23,39 @@ builder.Services.AddSingleton<IDockerClient>(_ =>
     return new DockerClientConfiguration(new Uri(endpoint)).CreateClient();
 });
 
+// YARP reverse proxy
+var proxyProvider = new FishProxyConfigProvider();
+builder.Services.AddSingleton(proxyProvider);
+builder.Services.AddReverseProxy();
+
 // Application services
 builder.Services.AddScoped<IContainerConfigService, ContainerConfigService>();
+builder.Services.AddSingleton<IDockerNetworkService, DockerNetworkService>();
 builder.Services.AddScoped<IDockerOrchestratorService, DockerOrchestratorService>();
 builder.Services.AddScoped<IVoiceLibraryService, VoiceLibraryService>();
 builder.Services.AddHttpClient<ITtsClientService, TtsClientService>();
 
+// Health monitoring
+builder.Services.AddHostedService<HealthMonitorService>();
+
 var app = builder.Build();
 
+// Run migrations
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     await db.Database.MigrateAsync();
+}
+
+// Ensure Docker bridge network exists
+try
+{
+    var networkService = app.Services.GetRequiredService<IDockerNetworkService>();
+    await networkService.EnsureNetworkExistsAsync();
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex, "Could not ensure Docker bridge network exists. Docker may not be running.");
 }
 
 // Configure the HTTP request pipeline.
@@ -69,6 +91,9 @@ if (Directory.Exists(referencesDir))
 }
 
 app.UseAntiforgery();
+
+// YARP reverse proxy for TTS API
+app.MapReverseProxy();
 
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
