@@ -2,7 +2,9 @@ using Docker.DotNet;
 using Docker.DotNet.Models;
 using FishAudioOrchestrator.Web.Data;
 using FishAudioOrchestrator.Web.Data.Entities;
+using FishAudioOrchestrator.Web.Hubs;
 using FishAudioOrchestrator.Web.Proxy;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 
 namespace FishAudioOrchestrator.Web.Services;
@@ -14,19 +16,30 @@ public class DockerOrchestratorService : IDockerOrchestratorService
     private readonly AppDbContext _context;
     private readonly FishProxyConfigProvider _proxyProvider;
     private readonly IDockerNetworkService _networkService;
+    private readonly IHubContext<OrchestratorHub> _hub;
 
     public DockerOrchestratorService(
         IDockerClient docker,
         IContainerConfigService configService,
         AppDbContext context,
         FishProxyConfigProvider proxyProvider,
-        IDockerNetworkService networkService)
+        IDockerNetworkService networkService,
+        IHubContext<OrchestratorHub> hub)
     {
         _docker = docker;
         _configService = configService;
         _context = context;
         _proxyProvider = proxyProvider;
         _networkService = networkService;
+        _hub = hub;
+    }
+
+    private async Task PushStatusUpdateAsync()
+    {
+        var allModels = await _context.ModelProfiles.ToListAsync();
+        var statusEvents = allModels.Select(m => new ContainerStatusEvent(
+            m.Id, m.Name, m.Status.ToString(), m.HostPort, m.LastStartedAt)).ToList();
+        await _hub.Clients.All.SendAsync("ReceiveContainerStatus", statusEvents);
     }
 
     public async Task CreateAndStartModelAsync(ModelProfile profile)
@@ -53,6 +66,8 @@ public class DockerOrchestratorService : IDockerOrchestratorService
             // Fallback to host port if bridge IP unavailable
             _proxyProvider.UpdateDestination($"http://localhost:{profile.HostPort}");
         }
+
+        await PushStatusUpdateAsync();
     }
 
     public async Task StopModelAsync(ModelProfile profile)
@@ -67,6 +82,8 @@ public class DockerOrchestratorService : IDockerOrchestratorService
         await _context.SaveChangesAsync();
 
         _proxyProvider.ClearDestination();
+
+        await PushStatusUpdateAsync();
     }
 
     public async Task RemoveModelAsync(ModelProfile profile)
@@ -85,6 +102,8 @@ public class DockerOrchestratorService : IDockerOrchestratorService
         profile.ContainerId = null;
         profile.Status = ModelStatus.Created;
         await _context.SaveChangesAsync();
+
+        await PushStatusUpdateAsync();
     }
 
     public async Task SwapModelAsync(ModelProfile newModel)

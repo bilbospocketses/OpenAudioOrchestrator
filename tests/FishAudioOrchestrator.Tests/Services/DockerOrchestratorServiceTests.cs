@@ -2,8 +2,10 @@ using Docker.DotNet;
 using Docker.DotNet.Models;
 using FishAudioOrchestrator.Web.Data;
 using FishAudioOrchestrator.Web.Data.Entities;
+using FishAudioOrchestrator.Web.Hubs;
 using FishAudioOrchestrator.Web.Proxy;
 using FishAudioOrchestrator.Web.Services;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Moq;
 
@@ -19,6 +21,16 @@ public class DockerOrchestratorServiceTests
         var ctx = new AppDbContext(options);
         ctx.Database.EnsureCreated();
         return ctx;
+    }
+
+    private static Mock<IHubContext<OrchestratorHub>> CreateHubMock()
+    {
+        var hubMock = new Mock<IHubContext<OrchestratorHub>>();
+        var clientsMock = new Mock<IHubClients>();
+        var clientProxyMock = new Mock<IClientProxy>();
+        clientsMock.Setup(c => c.All).Returns(clientProxyMock.Object);
+        hubMock.Setup(h => h.Clients).Returns(clientsMock.Object);
+        return hubMock;
     }
 
     private static Mock<IDockerClient> CreateMockDockerClient()
@@ -84,7 +96,7 @@ public class DockerOrchestratorServiceTests
         context.ModelProfiles.Add(profile);
         await context.SaveChangesAsync();
 
-        var service = new DockerOrchestratorService(mockDocker.Object, mockConfig.Object, context, mockProxy.Object, mockNetwork.Object);
+        var service = new DockerOrchestratorService(mockDocker.Object, mockConfig.Object, context, mockProxy.Object, mockNetwork.Object, CreateHubMock().Object);
         await service.CreateAndStartModelAsync(profile);
 
         Assert.Equal("abc123", profile.ContainerId);
@@ -110,7 +122,7 @@ public class DockerOrchestratorServiceTests
         context.ModelProfiles.Add(profile);
         await context.SaveChangesAsync();
 
-        var service = new DockerOrchestratorService(mockDocker.Object, mockConfig.Object, context, mockProxy.Object, mockNetwork.Object);
+        var service = new DockerOrchestratorService(mockDocker.Object, mockConfig.Object, context, mockProxy.Object, mockNetwork.Object, CreateHubMock().Object);
         await service.StopModelAsync(profile);
 
         Assert.Equal(ModelStatus.Stopped, profile.Status);
@@ -137,7 +149,7 @@ public class DockerOrchestratorServiceTests
         context.ModelProfiles.Add(profile);
         await context.SaveChangesAsync();
 
-        var service = new DockerOrchestratorService(mockDocker.Object, mockConfig.Object, context, mockProxy.Object, mockNetwork.Object);
+        var service = new DockerOrchestratorService(mockDocker.Object, mockConfig.Object, context, mockProxy.Object, mockNetwork.Object, CreateHubMock().Object);
         await service.RemoveModelAsync(profile);
 
         Assert.Null(profile.ContainerId);
@@ -173,7 +185,7 @@ public class DockerOrchestratorServiceTests
         context.ModelProfiles.AddRange(running, newModel);
         await context.SaveChangesAsync();
 
-        var service = new DockerOrchestratorService(mockDocker.Object, mockConfig.Object, context, mockProxy.Object, mockNetwork.Object);
+        var service = new DockerOrchestratorService(mockDocker.Object, mockConfig.Object, context, mockProxy.Object, mockNetwork.Object, CreateHubMock().Object);
         await service.SwapModelAsync(newModel);
 
         Assert.Equal(ModelStatus.Stopped, running.Status);
@@ -190,7 +202,7 @@ public class DockerOrchestratorServiceTests
         var mockProxy = new Mock<FishProxyConfigProvider>();
         var mockNetwork = new Mock<IDockerNetworkService>();
 
-        var service = new DockerOrchestratorService(mockDocker.Object, mockConfig.Object, context, mockProxy.Object, mockNetwork.Object);
+        var service = new DockerOrchestratorService(mockDocker.Object, mockConfig.Object, context, mockProxy.Object, mockNetwork.Object, CreateHubMock().Object);
         var status = await service.GetContainerStatusAsync("abc123");
 
         Assert.Equal("running", status);
@@ -222,7 +234,7 @@ public class DockerOrchestratorServiceTests
         await context.SaveChangesAsync();
 
         var service = new DockerOrchestratorService(
-            mockDocker.Object, mockConfig.Object, context, mockProxy.Object, mockNetwork.Object);
+            mockDocker.Object, mockConfig.Object, context, mockProxy.Object, mockNetwork.Object, CreateHubMock().Object);
 
         await service.CreateAndStartModelAsync(profile);
 
@@ -252,7 +264,7 @@ public class DockerOrchestratorServiceTests
         await context.SaveChangesAsync();
 
         var service = new DockerOrchestratorService(
-            mockDocker.Object, mockConfig.Object, context, mockProxy.Object, mockNetwork.Object);
+            mockDocker.Object, mockConfig.Object, context, mockProxy.Object, mockNetwork.Object, CreateHubMock().Object);
 
         await service.StopModelAsync(profile);
 

@@ -2,6 +2,7 @@ using Docker.DotNet;
 using FishAudioOrchestrator.Web.Components;
 using FishAudioOrchestrator.Web.Data;
 using FishAudioOrchestrator.Web.Data.Entities;
+using FishAudioOrchestrator.Web.Hubs;
 using FishAudioOrchestrator.Web.Middleware;
 using FishAudioOrchestrator.Web.Proxy;
 using FishAudioOrchestrator.Web.Services;
@@ -75,6 +76,11 @@ builder.Services.AddScoped<IAdminSeedService, AdminSeedService>();
 
 // Health monitoring
 builder.Services.AddHostedService<HealthMonitorService>();
+
+// SignalR
+builder.Services.AddSignalR();
+builder.Services.AddSingleton<IContainerLogService, ContainerLogService>();
+builder.Services.AddSingleton<GpuMetricsState>();
 
 var app = builder.Build();
 
@@ -162,5 +168,7 @@ app.MapReverseProxy();
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
+
+app.MapHub<OrchestratorHub>("/hubs/orchestrator");
 
 app.Run();

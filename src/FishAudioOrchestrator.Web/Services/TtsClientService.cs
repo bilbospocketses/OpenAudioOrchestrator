@@ -3,6 +3,8 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using FishAudioOrchestrator.Web.Data;
 using FishAudioOrchestrator.Web.Data.Entities;
+using FishAudioOrchestrator.Web.Hubs;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Configuration;
 
 namespace FishAudioOrchestrator.Web.Services;
@@ -12,13 +14,15 @@ public class TtsClientService : ITtsClientService
     private readonly HttpClient _httpClient;
     private readonly string _outputPath;
     private readonly AppDbContext _context;
+    private readonly IHubContext<OrchestratorHub> _hub;
 
-    public TtsClientService(HttpClient httpClient, IConfiguration config, AppDbContext context)
+    public TtsClientService(HttpClient httpClient, IConfiguration config, AppDbContext context, IHubContext<OrchestratorHub> hub)
     {
         _httpClient = httpClient;
         var dataRoot = config["FishOrchestrator:DataRoot"]!;
         _outputPath = Path.Combine(dataRoot, "Output");
         _context = context;
+        _hub = hub;
     }
 
     public async Task<TtsResult> GenerateAsync(string containerBaseUrl, TtsRequest request,
@@ -43,6 +47,15 @@ public class TtsClientService : ITtsClientService
 
         await SaveGenerationLogAsync(modelProfileId, referenceVoiceId,
             request.Text, outputFileName, request.Format, sw.ElapsedMilliseconds);
+
+        var notification = new TtsNotificationEvent(
+            null,
+            request.Text.Length > 50 ? request.Text[..50] + "..." : request.Text,
+            outputFileName,
+            sw.ElapsedMilliseconds,
+            true,
+            null);
+        await _hub.Clients.All.SendAsync("ReceiveTtsNotification", notification);
 
         return new TtsResult
         {

@@ -1,6 +1,8 @@
 using FishAudioOrchestrator.Web.Data;
 using FishAudioOrchestrator.Web.Data.Entities;
+using FishAudioOrchestrator.Web.Hubs;
 using FishAudioOrchestrator.Web.Services;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -52,9 +54,10 @@ public class HealthMonitorServiceTests
             .ReturnsAsync(false);
 
         var scopeFactory = CreateScopeFactory(context);
+        var (hubMock, gpuState) = CreateHubMocks();
         var service = new HealthMonitorService(
             scopeFactory, mockTts.Object, CreateConfig(),
-            NullLogger<HealthMonitorService>.Instance);
+            NullLogger<HealthMonitorService>.Instance, hubMock.Object, gpuState);
 
         await service.CheckHealthAsync();
 
@@ -83,9 +86,10 @@ public class HealthMonitorServiceTests
             .ReturnsAsync(true);
 
         var scopeFactory = CreateScopeFactory(context);
+        var (hubMock, gpuState) = CreateHubMocks();
         var service = new HealthMonitorService(
             scopeFactory, mockTts.Object, CreateConfig(),
-            NullLogger<HealthMonitorService>.Instance);
+            NullLogger<HealthMonitorService>.Instance, hubMock.Object, gpuState);
 
         await service.CheckHealthAsync();
 
@@ -110,9 +114,10 @@ public class HealthMonitorServiceTests
 
         var mockTts = new Mock<ITtsClientService>();
         var scopeFactory = CreateScopeFactory(context);
+        var (hubMock, gpuState) = CreateHubMocks();
         var service = new HealthMonitorService(
             scopeFactory, mockTts.Object, CreateConfig(),
-            NullLogger<HealthMonitorService>.Instance);
+            NullLogger<HealthMonitorService>.Instance, hubMock.Object, gpuState);
 
         await service.CheckHealthAsync();
 
@@ -129,5 +134,15 @@ public class HealthMonitorServiceTests
         var mockFactory = new Mock<IServiceScopeFactory>();
         mockFactory.Setup(f => f.CreateScope()).Returns(mockScope.Object);
         return mockFactory.Object;
+    }
+
+    private static (Mock<IHubContext<OrchestratorHub>> hubMock, GpuMetricsState gpuState) CreateHubMocks()
+    {
+        var hubMock = new Mock<IHubContext<OrchestratorHub>>();
+        var clientsMock = new Mock<IHubClients>();
+        var clientProxyMock = new Mock<IClientProxy>();
+        clientsMock.Setup(c => c.All).Returns(clientProxyMock.Object);
+        hubMock.Setup(h => h.Clients).Returns(clientsMock.Object);
+        return (hubMock, new GpuMetricsState());
     }
 }

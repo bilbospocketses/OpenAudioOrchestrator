@@ -1,8 +1,11 @@
 using FishAudioOrchestrator.Web.Data;
 using FishAudioOrchestrator.Web.Data.Entities;
+using FishAudioOrchestrator.Web.Hubs;
 using FishAudioOrchestrator.Web.Services;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Moq;
 
 namespace FishAudioOrchestrator.Tests.Services;
 
@@ -38,6 +41,16 @@ public class TtsClientServiceTests : IDisposable
                 ["FishOrchestrator:DataRoot"] = _testDataRoot
             })
             .Build();
+    }
+
+    private static Mock<IHubContext<OrchestratorHub>> CreateHubMock()
+    {
+        var hubMock = new Mock<IHubContext<OrchestratorHub>>();
+        var clientsMock = new Mock<IHubClients>();
+        var clientProxyMock = new Mock<IClientProxy>();
+        clientsMock.Setup(c => c.All).Returns(clientProxyMock.Object);
+        hubMock.Setup(h => h.Clients).Returns(clientsMock.Object);
+        return hubMock;
     }
 
     [Fact]
@@ -89,7 +102,7 @@ public class TtsClientServiceTests : IDisposable
         _context.ModelProfiles.Add(model);
         await _context.SaveChangesAsync();
 
-        var service = new TtsClientService(new HttpClient(), CreateConfig(), _context);
+        var service = new TtsClientService(new HttpClient(), CreateConfig(), _context, CreateHubMock().Object);
 
         var log = await service.SaveGenerationLogAsync(
             modelProfileId: model.Id, referenceVoiceId: null,

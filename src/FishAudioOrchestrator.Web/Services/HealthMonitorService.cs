@@ -1,5 +1,7 @@
 using FishAudioOrchestrator.Web.Data;
 using FishAudioOrchestrator.Web.Data.Entities;
+using FishAudioOrchestrator.Web.Hubs;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -14,19 +16,25 @@ public class HealthMonitorService : BackgroundService
     private readonly ITtsClientService _ttsClient;
     private readonly int _intervalSeconds;
     private readonly ILogger<HealthMonitorService> _logger;
+    private readonly IHubContext<OrchestratorHub> _hub;
+    private readonly GpuMetricsState _gpuState;
     private int _consecutiveFailures;
 
     public HealthMonitorService(
         IServiceScopeFactory scopeFactory,
         ITtsClientService ttsClient,
         IConfiguration config,
-        ILogger<HealthMonitorService> logger)
+        ILogger<HealthMonitorService> logger,
+        IHubContext<OrchestratorHub> hub,
+        GpuMetricsState gpuState)
     {
         _scopeFactory = scopeFactory;
         _ttsClient = ttsClient;
         _intervalSeconds = int.Parse(
             config["FishOrchestrator:HealthCheckIntervalSeconds"] ?? "30");
         _logger = logger;
+        _hub = hub;
+        _gpuState = gpuState;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -73,6 +81,20 @@ public class HealthMonitorService : BackgroundService
 
             running.Status = ModelStatus.Error;
             await context.SaveChangesAsync();
+        }
+
+        // Push container status for all models
+        var allModels = await context.ModelProfiles.ToListAsync();
+        var statusEvents = allModels.Select(m => new ContainerStatusEvent(
+            m.Id, m.Name, m.Status.ToString(), m.HostPort, m.LastStartedAt)).ToList();
+        await _hub.Clients.All.SendAsync("ReceiveContainerStatus", statusEvents);
+
+        // Collect and push GPU metrics
+        var gpuMetrics = await GpuMetricsParser.CollectAsync();
+        if (gpuMetrics is not null)
+        {
+            _gpuState.Update(gpuMetrics);
+            await _hub.Clients.All.SendAsync("ReceiveGpuMetrics", gpuMetrics);
         }
     }
 }
