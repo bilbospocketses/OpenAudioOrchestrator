@@ -4,18 +4,18 @@ namespace FishAudioOrchestrator.Web.Services;
 
 public class GpuMetricsState
 {
-    public int MemoryUsedMb { get; private set; }
-    public int MemoryTotalMb { get; private set; }
-    public int UtilizationPercent { get; private set; }
+    private volatile GpuMetricsEvent? _current;
+
+    public int MemoryUsedMb => _current?.MemoryUsedMb ?? 0;
+    public int MemoryTotalMb => _current?.MemoryTotalMb ?? 0;
+    public int UtilizationPercent => _current?.UtilizationPercent ?? 0;
     public DateTime LastUpdated { get; private set; }
 
     public event Action? OnChange;
 
     public void Update(GpuMetricsEvent metrics)
     {
-        MemoryUsedMb = metrics.MemoryUsedMb;
-        MemoryTotalMb = metrics.MemoryTotalMb;
-        UtilizationPercent = metrics.UtilizationPercent;
+        _current = metrics;
         LastUpdated = DateTime.UtcNow;
         OnChange?.Invoke();
     }

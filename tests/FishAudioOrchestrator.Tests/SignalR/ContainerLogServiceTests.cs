@@ -2,6 +2,7 @@ using FishAudioOrchestrator.Web.Hubs;
 using FishAudioOrchestrator.Web.Services;
 using Docker.DotNet;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 
 namespace FishAudioOrchestrator.Tests.SignalR;
@@ -19,7 +20,7 @@ public class ContainerLogServiceTests
         clientsMock.Setup(c => c.Clients(It.IsAny<IReadOnlyList<string>>())).Returns(clientProxyMock.Object);
         hubMock.Setup(h => h.Clients).Returns(clientsMock.Object);
 
-        var service = new ContainerLogService(dockerMock.Object, hubMock.Object);
+        var service = new ContainerLogService(dockerMock.Object, hubMock.Object, NullLogger<ContainerLogService>.Instance);
         return (service, hubMock);
     }
 

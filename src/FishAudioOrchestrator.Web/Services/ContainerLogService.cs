@@ -4,6 +4,7 @@ using Docker.DotNet;
 using Docker.DotNet.Models;
 using FishAudioOrchestrator.Web.Hubs;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Logging;
 
 namespace FishAudioOrchestrator.Web.Services;
 
@@ -11,28 +12,32 @@ public class ContainerLogService : IContainerLogService
 {
     private readonly IDockerClient _docker;
     private readonly IHubContext<OrchestratorHub> _hub;
+    private readonly ILogger<ContainerLogService> _logger;
     private readonly ConcurrentDictionary<string, ContainerLogStream> _streams = new();
 
-    public ContainerLogService(IDockerClient docker, IHubContext<OrchestratorHub> hub)
+    public ContainerLogService(IDockerClient docker, IHubContext<OrchestratorHub> hub, ILogger<ContainerLogService> logger)
     {
         _docker = docker;
         _hub = hub;
+        _logger = logger;
     }
 
-    public async Task SubscribeAsync(string containerId, string connectionId)
+    public Task SubscribeAsync(string containerId, string connectionId)
     {
         var stream = _streams.GetOrAdd(containerId, _ => new ContainerLogStream());
 
         lock (stream.Lock)
         {
             stream.Subscribers.Add(connectionId);
+
+            if (stream.ReaderTask is null || stream.ReaderTask.IsCompleted)
+            {
+                stream.Cts = new CancellationTokenSource();
+                stream.ReaderTask = Task.Run(() => ReadLogStreamAsync(containerId, stream));
+            }
         }
 
-        if (stream.ReaderTask is null || stream.ReaderTask.IsCompleted)
-        {
-            stream.Cts = new CancellationTokenSource();
-            stream.ReaderTask = Task.Run(() => ReadLogStreamAsync(containerId, stream));
-        }
+        return Task.CompletedTask;
     }
 
     public Task UnsubscribeAsync(string containerId, string connectionId)
@@ -132,7 +137,10 @@ public class ContainerLogService : IContainerLogService
             }
         }
         catch (OperationCanceledException) { }
-        catch (Exception) { }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Log stream for {ContainerId} ended with error", containerId);
+        }
     }
 
     private static LogLineEvent ParseLogLine(string containerId, string rawLine)

@@ -35,34 +35,49 @@ public class TtsClientService : ITtsClientService
         var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
 
         var sw = Stopwatch.StartNew();
-        var response = await _httpClient.PostAsync(
-            $"{containerBaseUrl.TrimEnd('/')}/v1/tts", content);
-        response.EnsureSuccessStatusCode();
-        sw.Stop();
-
-        await using (var fs = File.Create(outputFilePath))
+        try
         {
-            await response.Content.CopyToAsync(fs);
+            var response = await _httpClient.PostAsync(
+                $"{containerBaseUrl.TrimEnd('/')}/v1/tts", content);
+            response.EnsureSuccessStatusCode();
+            sw.Stop();
+
+            await using (var fs = File.Create(outputFilePath))
+            {
+                await response.Content.CopyToAsync(fs);
+            }
+
+            await SaveGenerationLogAsync(modelProfileId, referenceVoiceId,
+                request.Text, outputFileName, request.Format, sw.ElapsedMilliseconds);
+
+            var notification = new TtsNotificationEvent(
+                null,
+                request.Text.Length > 50 ? request.Text[..50] + "..." : request.Text,
+                outputFileName,
+                sw.ElapsedMilliseconds,
+                true,
+                null);
+            await _hub.Clients.All.SendAsync("ReceiveTtsNotification", notification);
+
+            return new TtsResult
+            {
+                OutputFileName = outputFileName,
+                OutputPath = outputFilePath,
+                DurationMs = sw.ElapsedMilliseconds
+            };
         }
-
-        await SaveGenerationLogAsync(modelProfileId, referenceVoiceId,
-            request.Text, outputFileName, request.Format, sw.ElapsedMilliseconds);
-
-        var notification = new TtsNotificationEvent(
-            null,
-            request.Text.Length > 50 ? request.Text[..50] + "..." : request.Text,
-            outputFileName,
-            sw.ElapsedMilliseconds,
-            true,
-            null);
-        await _hub.Clients.All.SendAsync("ReceiveTtsNotification", notification);
-
-        return new TtsResult
+        catch (Exception ex)
         {
-            OutputFileName = outputFileName,
-            OutputPath = outputFilePath,
-            DurationMs = sw.ElapsedMilliseconds
-        };
+            var failNotification = new TtsNotificationEvent(
+                null,
+                request.Text.Length > 50 ? request.Text[..50] + "..." : request.Text,
+                "",
+                0,
+                false,
+                ex.Message);
+            await _hub.Clients.All.SendAsync("ReceiveTtsNotification", failNotification);
+            throw;
+        }
     }
 
     public async Task<bool> GetHealthAsync(string baseUrl)
