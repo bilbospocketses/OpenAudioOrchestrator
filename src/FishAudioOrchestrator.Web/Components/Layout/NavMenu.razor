@@ -1,4 +1,6 @@
 @using Microsoft.AspNetCore.Components.Authorization
+@implements IDisposable
+@inject GpuMetricsState GpuState
 
 <nav class="navbar navbar-expand navbar-dark bg-dark px-3">
     <a class="navbar-brand" href="/">Fish Orchestrator</a>
@@ -12,6 +14,7 @@
                 <NavLink class="nav-link" href="/voices">Voices</NavLink>
                 <NavLink class="nav-link" href="/playground">TTS</NavLink>
                 <NavLink class="nav-link" href="/history">History</NavLink>
+                <NavLink class="nav-link" href="/logs">Logs</NavLink>
                 <AuthorizeView Roles="Admin" Context="adminCtx2">
                     <NavLink class="nav-link" href="/admin/users">Users</NavLink>
                     <NavLink class="nav-link" href="/admin/settings">Settings</NavLink>
@@ -28,33 +31,23 @@
 @code {
     private string _gpuInfo = "GPU: loading...";
 
-    protected override async Task OnInitializedAsync()
+    protected override void OnInitialized()
     {
-        try
+        GpuState.OnChange += UpdateGpuInfo;
+        if (GpuState.MemoryTotalMb > 0)
         {
-            var psi = new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = "nvidia-smi",
-                Arguments = "--query-gpu=memory.used,memory.total --format=csv,noheader,nounits",
-                RedirectStandardOutput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-            using var process = System.Diagnostics.Process.Start(psi);
-            if (process is not null)
-            {
-                var output = await process.StandardOutput.ReadToEndAsync();
-                await process.WaitForExitAsync();
-                var parts = output.Trim().Split(',');
-                if (parts.Length == 2)
-                {
-                    _gpuInfo = $"GPU: {parts[0].Trim()} / {parts[1].Trim()} MB";
-                }
-            }
+            UpdateGpuInfo();
         }
-        catch
-        {
-            _gpuInfo = "GPU: N/A";
-        }
+    }
+
+    private void UpdateGpuInfo()
+    {
+        _gpuInfo = $"GPU: {GpuState.MemoryUsedMb} / {GpuState.MemoryTotalMb} MB ({GpuState.UtilizationPercent}%)";
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        GpuState.OnChange -= UpdateGpuInfo;
     }
 }

@@ -2,12 +2,41 @@
 @attribute [Authorize]
 @inject AppDbContext Db
 @inject IDockerOrchestratorService Orchestrator
+@inject GpuMetricsState GpuState
 @using Microsoft.EntityFrameworkCore
 @using FishAudioOrchestrator.Web.Data
+@using FishAudioOrchestrator.Web.Hubs
+@using Microsoft.AspNetCore.SignalR.Client
+@implements IAsyncDisposable
 
 <PageTitle>Dashboard — Fish Orchestrator</PageTitle>
 
 <h2>Dashboard</h2>
+
+@* GPU Metrics Panel *@
+<div class="card mb-3">
+    <div class="card-body py-2">
+        <div class="d-flex align-items-center">
+            <strong class="me-3">GPU</strong>
+            @if (GpuState.MemoryTotalMb > 0)
+            {
+                <div class="flex-grow-1 me-3">
+                    <div class="progress" style="height: 20px;">
+                        <div class="progress-bar bg-info" role="progressbar"
+                             style="width: @((int)(100.0 * GpuState.MemoryUsedMb / GpuState.MemoryTotalMb))%">
+                            @GpuState.MemoryUsedMb / @GpuState.MemoryTotalMb MB
+                        </div>
+                    </div>
+                </div>
+                <span class="text-muted">Util: @GpuState.UtilizationPercent%</span>
+            }
+            else
+            {
+                <span class="text-muted">loading...</span>
+            }
+        </div>
+    </div>
+</div>
 
 @if (_activeModel is not null)
 {
@@ -75,6 +104,52 @@ else
     </table>
 }
 
+@* Log Preview *@
+@if (_activeModel is not null)
+{
+    <div class="card mt-3">
+        <div class="card-header d-flex justify-content-between align-items-center py-2"
+             @onclick="() => _logExpanded = !_logExpanded" style="cursor: pointer;">
+            <span>Container Logs</span>
+            <span>@(_logExpanded ? "▼" : "▶")</span>
+        </div>
+        @if (_logExpanded)
+        {
+            <div class="card-body p-0">
+                <pre class="bg-dark text-light p-2 mb-0" style="max-height: 250px; overflow-y: auto; font-size: 0.85em;">@foreach (var line in _logLines.TakeLast(10))
+{<text>@line
+</text>}</pre>
+            </div>
+            <div class="card-footer py-1">
+                <a href="/logs" class="small text-muted">View full logs</a>
+            </div>
+        }
+    </div>
+}
+
+@* TTS Toast *@
+@if (_toast is not null)
+{
+    <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 1050;">
+        <div class="toast show @(_toast.Success ? "border-success" : "border-danger")" role="alert">
+            <div class="toast-header bg-dark text-light">
+                <strong class="me-auto">TTS @(_toast.Success ? "Complete" : "Failed")</strong>
+                <button type="button" class="btn-close btn-close-white" @onclick="() => _toast = null"></button>
+            </div>
+            <div class="toast-body bg-dark text-light">
+                @if (_toast.Success)
+                {
+                    <text>Generated in @_toast.DurationMs ms</text>
+                }
+                else
+                {
+                    <text>@_toast.Error</text>
+                }
+            </div>
+        </div>
+    </div>
+}
+
 @if (!string.IsNullOrEmpty(_error))
 {
     <div class="alert alert-danger mt-3">@_error</div>
@@ -91,6 +166,11 @@ else
     private ModelProfile? _activeModel;
     private bool _isOperating;
     private string? _error;
+    private bool _logExpanded;
+    private List<string> _logLines = new();
+    private TtsNotificationEvent? _toast;
+    private HubConnection? _hubConnection;
+    private string? _subscribedContainerId;
 
     private ConfirmDialog _confirmDialog = null!;
     private string _confirmTitle = "";
@@ -98,9 +178,90 @@ else
     private string _confirmButtonText = "Confirm";
     private EventCallback _confirmAction;
 
+    [Inject] private NavigationManager Nav { get; set; } = null!;
+
     protected override async Task OnInitializedAsync()
     {
         await LoadModels();
+        GpuState.OnChange += OnGpuChange;
+
+        _hubConnection = new HubConnectionBuilder()
+            .WithUrl(Nav.ToAbsoluteUri("/hubs/orchestrator"))
+            .WithAutomaticReconnect()
+            .Build();
+
+        _hubConnection.On<List<ContainerStatusEvent>>("ReceiveContainerStatus", OnContainerStatus);
+        _hubConnection.On<TtsNotificationEvent>("ReceiveTtsNotification", OnTtsNotification);
+        _hubConnection.On<LogLineEvent>("ReceiveLogLine", OnLogLine);
+
+        await _hubConnection.StartAsync();
+
+        if (_activeModel?.ContainerId is not null)
+        {
+            _subscribedContainerId = _activeModel.ContainerId;
+            await _hubConnection.InvokeAsync("SubscribeLogs", _subscribedContainerId);
+        }
+    }
+
+    private async Task OnContainerStatus(List<ContainerStatusEvent> events)
+    {
+        foreach (var evt in events)
+        {
+            var model = _models.FirstOrDefault(m => m.Id == evt.ModelId);
+            if (model is not null)
+            {
+                if (Enum.TryParse<ModelStatus>(evt.Status, out var status))
+                    model.Status = status;
+                model.LastStartedAt = evt.LastStartedAt;
+            }
+        }
+
+        var newActive = _models.FirstOrDefault(m => m.Status == ModelStatus.Running);
+
+        if (newActive?.ContainerId != _subscribedContainerId && _hubConnection is not null)
+        {
+            if (_subscribedContainerId is not null)
+            {
+                await _hubConnection.InvokeAsync("UnsubscribeLogs", _subscribedContainerId);
+                _logLines.Clear();
+            }
+            _subscribedContainerId = newActive?.ContainerId;
+            if (_subscribedContainerId is not null)
+            {
+                await _hubConnection.InvokeAsync("SubscribeLogs", _subscribedContainerId);
+            }
+        }
+
+        _activeModel = newActive;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnTtsNotification(TtsNotificationEvent notification)
+    {
+        _toast = notification;
+        await InvokeAsync(StateHasChanged);
+
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(5000);
+            if (_toast == notification)
+            {
+                _toast = null;
+                await InvokeAsync(StateHasChanged);
+            }
+        });
+    }
+
+    private async Task OnLogLine(LogLineEvent logLine)
+    {
+        _logLines.Add($"[{logLine.Timestamp:HH:mm:ss}] {logLine.Line}");
+        if (_logLines.Count > 100) _logLines.RemoveRange(0, _logLines.Count - 100);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void OnGpuChange()
+    {
+        InvokeAsync(StateHasChanged);
     }
 
     private async Task LoadModels()
@@ -145,38 +306,18 @@ else
     {
         _isOperating = true;
         _error = null;
-        try
-        {
-            await Orchestrator.SwapModelAsync(model);
-        }
-        catch (Exception ex)
-        {
-            _error = $"Failed to start model: {ex.Message}";
-        }
-        finally
-        {
-            _isOperating = false;
-            await LoadModels();
-        }
+        try { await Orchestrator.SwapModelAsync(model); }
+        catch (Exception ex) { _error = $"Failed to start model: {ex.Message}"; }
+        finally { _isOperating = false; }
     }
 
     private async Task StopModel(ModelProfile model)
     {
         _isOperating = true;
         _error = null;
-        try
-        {
-            await Orchestrator.StopModelAsync(model);
-        }
-        catch (Exception ex)
-        {
-            _error = $"Failed to stop model: {ex.Message}";
-        }
-        finally
-        {
-            _isOperating = false;
-            await LoadModels();
-        }
+        try { await Orchestrator.StopModelAsync(model); }
+        catch (Exception ex) { _error = $"Failed to stop model: {ex.Message}"; }
+        finally { _isOperating = false; }
     }
 
     private async Task RemoveModel(ModelProfile model)
@@ -189,14 +330,20 @@ else
             Db.ModelProfiles.Remove(model);
             await Db.SaveChangesAsync();
         }
-        catch (Exception ex)
+        catch (Exception ex) { _error = $"Failed to remove model: {ex.Message}"; }
+        finally { _isOperating = false; }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        GpuState.OnChange -= OnGpuChange;
+        if (_hubConnection is not null)
         {
-            _error = $"Failed to remove model: {ex.Message}";
-        }
-        finally
-        {
-            _isOperating = false;
-            await LoadModels();
+            if (_subscribedContainerId is not null)
+            {
+                try { await _hubConnection.InvokeAsync("UnsubscribeLogs", _subscribedContainerId); } catch { }
+            }
+            await _hubConnection.DisposeAsync();
         }
     }
 }
