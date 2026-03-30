@@ -7,3 +7,8 @@ obj/
 *.db-shm
 *.db-wal
 appsettings.Development.json
+publish/
+.idea/
+*.DotSettings.user
+node_modules/
+dist/
