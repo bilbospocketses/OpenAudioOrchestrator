@@ -1,3 +1,4 @@
+using Docker.DotNet;
 using FishAudioOrchestrator.Web.Data;
 using FishAudioOrchestrator.Web.Data.Entities;
 using FishAudioOrchestrator.Web.Hubs;
@@ -13,6 +14,7 @@ namespace FishAudioOrchestrator.Web.Services;
 public class HealthMonitorService : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly IDockerClient _docker;
     private readonly int _intervalSeconds;
     private readonly ILogger<HealthMonitorService> _logger;
     private readonly IHubContext<OrchestratorHub> _hub;
@@ -22,6 +24,7 @@ public class HealthMonitorService : BackgroundService
 
     public HealthMonitorService(
         IServiceScopeFactory scopeFactory,
+        IDockerClient docker,
         IConfiguration config,
         ILogger<HealthMonitorService> logger,
         IHubContext<OrchestratorHub> hub,
@@ -29,6 +32,7 @@ public class HealthMonitorService : BackgroundService
         OrchestratorEventBus eventBus)
     {
         _scopeFactory = scopeFactory;
+        _docker = docker;
         _intervalSeconds = int.Parse(
             config["FishOrchestrator:HealthCheckIntervalSeconds"] ?? "30");
         _logger = logger;
@@ -89,8 +93,29 @@ public class HealthMonitorService : BackgroundService
             return;
         }
 
-        var baseUrl = $"http://localhost:{running.HostPort}";
-        var healthy = await ttsClient.GetHealthAsync(baseUrl);
+        // If TTS jobs are active, just check Docker container status instead of
+        // hitting the HTTP health endpoint (which won't respond during generation)
+        var hasActiveJobs = await context.TtsJobs
+            .AnyAsync(j => j.Status == TtsJobStatus.Processing || j.Status == TtsJobStatus.Queued);
+
+        bool healthy;
+        if (hasActiveJobs && running.ContainerId is not null)
+        {
+            try
+            {
+                var inspect = await _docker.Containers.InspectContainerAsync(running.ContainerId);
+                healthy = inspect.State.Running;
+            }
+            catch
+            {
+                healthy = false;
+            }
+        }
+        else
+        {
+            var baseUrl = $"http://localhost:{running.HostPort}";
+            healthy = await ttsClient.GetHealthAsync(baseUrl);
+        }
 
         if (healthy)
         {
