@@ -6,9 +6,8 @@
 @using Microsoft.EntityFrameworkCore
 @using FishAudioOrchestrator.Web.Data
 @using FishAudioOrchestrator.Web.Hubs
-@using Microsoft.AspNetCore.SignalR.Client
 @implements IAsyncDisposable
-@inject NavigationManager Nav
+@inject OrchestratorEventBus EventBus
 
 <PageTitle>TTS Playground — Fish Orchestrator</PageTitle>
 
@@ -103,7 +102,6 @@ else
     private bool _isGenerating;
     private string? _error;
     private TtsResult? _lastResult;
-    private HubConnection? _hubConnection;
 
     protected override async Task OnInitializedAsync()
     {
@@ -111,33 +109,31 @@ else
             .FirstOrDefaultAsync(m => m.Status == ModelStatus.Running);
         _voices = await VoiceService.ListVoicesAsync();
 
-        _hubConnection = new HubConnectionBuilder()
-            .WithUrl(Nav.ToAbsoluteUri("/hubs/orchestrator"))
-            .WithAutomaticReconnect()
-            .Build();
+        EventBus.OnContainerStatus += OnContainerStatusRaw;
+    }
 
-        _hubConnection.On<List<ContainerStatusEvent>>("ReceiveContainerStatus", async events =>
+    private void OnContainerStatusRaw(List<ContainerStatusEvent> events)
+    {
+        _ = InvokeAsync(async () =>
         {
             var runningEvent = events.FirstOrDefault(e => e.Status == "Running");
             if (runningEvent is null && _activeModel is not null)
             {
                 _activeModel = null;
-                await InvokeAsync(StateHasChanged);
+                StateHasChanged();
             }
             else if (runningEvent is not null && _activeModel is not null && runningEvent.ModelId != _activeModel.Id)
             {
                 _activeModel = await Db.ModelProfiles.FirstOrDefaultAsync(m => m.Id == runningEvent.ModelId);
-                await InvokeAsync(StateHasChanged);
+                StateHasChanged();
             }
         });
-
-        await _hubConnection.StartAsync();
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
-        if (_hubConnection is not null)
-            await _hubConnection.DisposeAsync();
+        EventBus.OnContainerStatus -= OnContainerStatusRaw;
+        return ValueTask.CompletedTask;
     }
 
     private async Task Generate()
