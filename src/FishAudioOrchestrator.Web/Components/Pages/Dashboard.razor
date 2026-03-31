@@ -109,22 +109,13 @@ else
 @if (_activeModel is not null)
 {
     <div class="card mt-3">
-        <div class="card-header d-flex justify-content-between align-items-center py-2"
-             @onclick="() => _logExpanded = !_logExpanded" style="cursor: pointer;">
-            <span>Container Logs</span>
-            <span>@(_logExpanded ? "▼" : "▶")</span>
+        <div class="card-header d-flex justify-content-between align-items-center py-2">
+            <span>Latest Container Output</span>
+            <a href="/logs" class="small">View full logs</a>
         </div>
-        @if (_logExpanded)
-        {
-            <div class="card-body p-0">
-                <pre class="bg-dark text-light p-2 mb-0" style="max-height: 250px; overflow-y: auto; font-size: 0.85em;">@for (var i = _logLines.Count - 1; i >= Math.Max(0, _logLines.Count - 10); i--)
-{<text>@_logLines[i]
-</text>}</pre>
-            </div>
-            <div class="card-footer py-1">
-                <a href="/logs" class="small text-muted">View full logs</a>
-            </div>
-        }
+        <div class="card-body py-2">
+            <pre class="bg-dark text-light p-2 mb-0" style="font-size: 0.85em; white-space: pre-wrap;">@(_logLines.Count > 0 ? _logLines[^1] : "Waiting for output...")</pre>
+        </div>
     </div>
 }
 
@@ -144,7 +135,6 @@ else
     private ModelProfile? _activeModel;
     private bool _isOperating;
     private string? _error;
-    private bool _logExpanded;
     private List<string> _logLines = new();
     private string? _subscribedContainerId;
     private readonly string _subscriberId = Guid.NewGuid().ToString();
