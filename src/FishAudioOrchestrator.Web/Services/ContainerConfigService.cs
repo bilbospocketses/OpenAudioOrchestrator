@@ -27,9 +27,15 @@ public class ContainerConfigService : IContainerConfigService
         var subFolder = Path.GetRelativePath(checkpointsRoot, profile.CheckpointPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
         var containerCheckpointPath = $"checkpoints/{subFolder.Replace('\\', '/')}";
 
+        var tz = TimeZoneInfo.Local.Id;
+        // Convert Windows timezone ID to IANA for Linux containers
+        if (TimeZoneInfo.TryConvertWindowsIdToIanaId(tz, out var ianaId))
+            tz = ianaId;
+
         var env = new List<string>
         {
             "COMPILE=0",
+            $"TZ={tz}",
             $"LLAMA_CHECKPOINT_PATH={containerCheckpointPath}",
             $"DECODER_CHECKPOINT_PATH={containerCheckpointPath}/codec.pth"
         };
