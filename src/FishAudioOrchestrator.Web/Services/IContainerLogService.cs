@@ -1,3 +1,5 @@
+using FishAudioOrchestrator.Web.Hubs;
+
 namespace FishAudioOrchestrator.Web.Services;
 
 public interface IContainerLogService
@@ -6,4 +8,8 @@ public interface IContainerLogService
     Task UnsubscribeAsync(string containerId, string connectionId);
     Task UnsubscribeAllAsync(string connectionId);
     bool HasSubscribers(string containerId);
+
+    void SubscribeCallback(string containerId, string subscriberId, Action<LogLineEvent> callback);
+    void UnsubscribeCallback(string containerId, string subscriberId);
+    void UnsubscribeAllCallbacks(string subscriberId);
 }

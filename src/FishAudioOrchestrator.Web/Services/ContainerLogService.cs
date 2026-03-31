@@ -14,6 +14,7 @@ public class ContainerLogService : IContainerLogService
     private readonly IHubContext<OrchestratorHub> _hub;
     private readonly ILogger<ContainerLogService> _logger;
     private readonly ConcurrentDictionary<string, ContainerLogStream> _streams = new();
+    private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, Action<LogLineEvent>>> _callbackSubscribers = new();
 
     public ContainerLogService(IDockerClient docker, IHubContext<OrchestratorHub> hub, ILogger<ContainerLogService> logger)
     {
@@ -84,12 +85,69 @@ public class ContainerLogService : IContainerLogService
 
     public bool HasSubscribers(string containerId)
     {
-        if (!_streams.TryGetValue(containerId, out var stream))
-            return false;
+        if (_streams.TryGetValue(containerId, out var stream))
+        {
+            lock (stream.Lock)
+            {
+                if (stream.Subscribers.Count > 0) return true;
+            }
+        }
 
+        return HasCallbackSubscribers(containerId);
+    }
+
+    private bool HasCallbackSubscribers(string containerId)
+    {
+        return _callbackSubscribers.TryGetValue(containerId, out var subs) && !subs.IsEmpty;
+    }
+
+    public void SubscribeCallback(string containerId, string subscriberId, Action<LogLineEvent> callback)
+    {
+        var subs = _callbackSubscribers.GetOrAdd(containerId, _ => new ConcurrentDictionary<string, Action<LogLineEvent>>());
+        subs[subscriberId] = callback;
+
+        // Ensure the Docker log reader is running for this container
+        var stream = _streams.GetOrAdd(containerId, _ => new ContainerLogStream());
         lock (stream.Lock)
         {
-            return stream.Subscribers.Count > 0;
+            if (stream.ReaderTask is null || stream.ReaderTask.IsCompleted)
+            {
+                stream.Cts = new CancellationTokenSource();
+                stream.ReaderTask = Task.Run(() => ReadLogStreamAsync(containerId, stream));
+            }
+        }
+    }
+
+    public void UnsubscribeCallback(string containerId, string subscriberId)
+    {
+        if (_callbackSubscribers.TryGetValue(containerId, out var subs))
+        {
+            subs.TryRemove(subscriberId, out _);
+            if (subs.IsEmpty)
+            {
+                _callbackSubscribers.TryRemove(containerId, out _);
+            }
+        }
+
+        // If no subscribers of either kind remain, stop the reader
+        if (!HasSubscribers(containerId) && !HasCallbackSubscribers(containerId))
+        {
+            if (_streams.TryRemove(containerId, out var stream))
+            {
+                stream.Cts?.Cancel();
+            }
+        }
+    }
+
+    public void UnsubscribeAllCallbacks(string subscriberId)
+    {
+        foreach (var kvp in _callbackSubscribers)
+        {
+            kvp.Value.TryRemove(subscriberId, out _);
+            if (kvp.Value.IsEmpty)
+            {
+                _callbackSubscribers.TryRemove(kvp.Key, out _);
+            }
         }
     }
 
@@ -132,6 +190,15 @@ public class ContainerLogService : IContainerLogService
                     {
                         await _hub.Clients.Clients(subscribers)
                             .SendAsync("ReceiveLogLine", logEvent, logStream.Cts.Token);
+                    }
+
+                    // Dispatch to in-process callback subscribers
+                    if (_callbackSubscribers.TryGetValue(containerId, out var callbackSubs))
+                    {
+                        foreach (var cb in callbackSubs.Values)
+                        {
+                            try { cb(logEvent); } catch { }
+                        }
                     }
                 }
             }
