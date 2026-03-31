@@ -65,7 +65,7 @@ public class TtsJobProcessor : BackgroundService
         {
             var filePath = Path.Combine(_outputPath, job.OutputFileName);
 
-            if (File.Exists(filePath) && new FileInfo(filePath).Length > 0)
+            if (File.Exists(filePath) && new FileInfo(filePath).Length > 1000)
             {
                 // File written during restart — promote to completed
                 _logger.LogInformation("Recovering completed job {JobId} — output file exists", job.Id);
@@ -117,7 +117,8 @@ public class TtsJobProcessor : BackgroundService
             return;
         }
 
-        // Build the curl command
+        // Build the curl command — write JSON to a temp file in the mounted
+        // output directory so curl can read it from inside the container
         var request = new TtsRequest
         {
             Text = job.InputText,
@@ -126,13 +127,15 @@ public class TtsJobProcessor : BackgroundService
         };
         var json = TtsClientService.BuildRequestJson(request);
         var containerOutputPath = $"/app/output/{job.OutputFileName}";
+        var requestFileName = $"_req_{job.Id}.json";
+        var requestFilePath = Path.Combine(_outputPath, requestFileName);
+        var containerRequestPath = $"/app/output/{requestFileName}";
 
-        // Escape the JSON for shell (replace single quotes with escaped version)
-        var escapedJson = json.Replace("'", "'\\''");
+        await File.WriteAllTextAsync(requestFilePath, json);
 
         var dockerArgs = $"exec {model.ContainerId} curl -s -X POST http://localhost:8080/v1/tts " +
                          $"-H \"Content-Type: application/json\" " +
-                         $"-d '{escapedJson}' " +
+                         $"-d @{containerRequestPath} " +
                          $"--output {containerOutputPath} " +
                          $"--max-time 7200";
 
@@ -165,6 +168,11 @@ public class TtsJobProcessor : BackgroundService
             _logger.LogError(ex, "TTS job {JobId} failed", job.Id);
             await FailJob(db, job, ex.Message);
         }
+        finally
+        {
+            // Clean up the request JSON file
+            try { if (File.Exists(requestFilePath)) File.Delete(requestFilePath); } catch { }
+        }
     }
 
     private async Task PollForOutputFileAsync(AppDbContext db, TtsJob job,
@@ -177,14 +185,46 @@ public class TtsJobProcessor : BackgroundService
         {
             await Task.Delay(PollInterval, CancellationToken.None);
 
-            // Check if file has been written
-            if (File.Exists(filePath) && new FileInfo(filePath).Length > 0)
+            // Check if docker exec process exited (success or error)
+            if (process is not null && process.HasExited)
             {
-                _logger.LogInformation("Job {JobId} completed — output file found", job.Id);
+                if (File.Exists(filePath))
+                {
+                    var fileSize = new FileInfo(filePath).Length;
+                    if (fileSize > 1000)
+                    {
+                        // Valid audio file (error responses are typically < 200 bytes)
+                        _logger.LogInformation("Job {JobId} completed — output file found ({Size} bytes)", job.Id, fileSize);
+                        await Task.Delay(1000, CancellationToken.None);
+                        var duration = (long)(DateTime.UtcNow - startTime).TotalMilliseconds;
+                        PromoteToGenerationLog(db, job, duration);
+                        await db.SaveChangesAsync(CancellationToken.None);
+                        return;
+                    }
+                    else
+                    {
+                        // Small file = error response from API, read it for the error message
+                        var errorContent = await File.ReadAllTextAsync(filePath);
+                        _logger.LogError("TTS API returned error for job {JobId}: {Error}", job.Id, errorContent);
+                        try { File.Delete(filePath); } catch { }
+                        await FailJob(db, job, $"TTS API error: {errorContent}");
+                        return;
+                    }
+                }
+                else
+                {
+                    var stderr = await process.StandardError.ReadToEndAsync();
+                    _logger.LogError("docker exec failed for job {JobId}: {Error}", job.Id, stderr);
+                    await FailJob(db, job, $"docker exec failed: {stderr}");
+                    return;
+                }
+            }
 
-                // Wait a moment for file write to finish
+            // Check if file appeared (for recovery polling without a process reference)
+            if (process is null && File.Exists(filePath) && new FileInfo(filePath).Length > 1000)
+            {
+                _logger.LogInformation("Job {JobId} completed — output file found during recovery", job.Id);
                 await Task.Delay(1000, CancellationToken.None);
-
                 var duration = (long)(DateTime.UtcNow - startTime).TotalMilliseconds;
                 PromoteToGenerationLog(db, job, duration);
                 await db.SaveChangesAsync(CancellationToken.None);
@@ -199,7 +239,6 @@ public class TtsJobProcessor : BackgroundService
 
             if (currentStatus == TtsJobStatus.Failed || currentStatus == default)
             {
-                // Job was cancelled or deleted — kill curl if running
                 _logger.LogInformation("Job {JobId} was cancelled", job.Id);
                 if (process is not null && !process.HasExited)
                 {
@@ -217,15 +256,6 @@ public class TtsJobProcessor : BackgroundService
                     try { process.Kill(); } catch { }
                 }
                 await FailJob(db, job, $"Generation timed out after {JobTimeout.TotalHours} hours");
-                return;
-            }
-
-            // Check if docker exec process exited without producing a file
-            if (process is not null && process.HasExited && process.ExitCode != 0)
-            {
-                var stderr = await process.StandardError.ReadToEndAsync();
-                _logger.LogError("docker exec failed for job {JobId}: {Error}", job.Id, stderr);
-                await FailJob(db, job, $"docker exec failed: {stderr}");
                 return;
             }
         }
