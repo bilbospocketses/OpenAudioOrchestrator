@@ -1,10 +1,8 @@
 using FishAudioOrchestrator.Web.Services;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 
 namespace FishAudioOrchestrator.Web.Hubs;
 
-[Authorize]
 public class OrchestratorHub : Hub
 {
     private readonly IContainerLogService _logService;

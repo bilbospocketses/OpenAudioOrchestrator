@@ -179,20 +179,14 @@ else
     private EventCallback _confirmAction;
 
     [Inject] private NavigationManager Nav { get; set; } = null!;
-    [Inject] private IHttpContextAccessor HttpContextAccessor { get; set; } = null!;
 
     protected override async Task OnInitializedAsync()
     {
         await LoadModels();
         GpuState.OnChange += OnGpuChange;
 
-        var cookies = HttpContextAccessor.HttpContext?.Request.Headers["Cookie"].ToString();
         _hubConnection = new HubConnectionBuilder()
-            .WithUrl(Nav.ToAbsoluteUri("/hubs/orchestrator"), options =>
-            {
-                if (!string.IsNullOrEmpty(cookies))
-                    options.Headers["Cookie"] = cookies;
-            })
+            .WithUrl(Nav.ToAbsoluteUri("/hubs/orchestrator"))
             .WithAutomaticReconnect()
             .Build();
 
