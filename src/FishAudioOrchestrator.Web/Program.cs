@@ -8,6 +8,7 @@ using FishAudioOrchestrator.Web.Proxy;
 using FishAudioOrchestrator.Web.Services;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using System.Net;
 using Microsoft.Extensions.FileProviders;
 using Yarp.ReverseProxy.Configuration;
 
@@ -18,6 +19,14 @@ var domain = builder.Configuration["FishOrchestrator:Domain"];
 if (!string.IsNullOrWhiteSpace(domain))
 {
     builder.Services.AddLettuceEncrypt();
+    builder.WebHost.UseKestrel(kestrel =>
+    {
+        kestrel.Listen(IPAddress.Any, 80);
+        kestrel.Listen(IPAddress.Any, 443, o => o.UseHttps(h =>
+        {
+            h.UseLettuceEncrypt(kestrel.ApplicationServices);
+        }));
+    });
 }
 
 // Add services to the container.
