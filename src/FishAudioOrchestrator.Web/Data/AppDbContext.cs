@@ -12,6 +12,7 @@ public class AppDbContext : IdentityDbContext<AppUser>
     public DbSet<ModelProfile> ModelProfiles => Set<ModelProfile>();
     public DbSet<ReferenceVoice> ReferenceVoices => Set<ReferenceVoice>();
     public DbSet<GenerationLog> GenerationLogs => Set<GenerationLog>();
+    public DbSet<TtsJob> TtsJobs => Set<TtsJob>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -46,6 +47,29 @@ public class AppDbContext : IdentityDbContext<AppUser>
             entity.Property(e => e.InputText).IsRequired();
             entity.Property(e => e.OutputFileName).IsRequired().HasMaxLength(255);
             entity.Property(e => e.Format).IsRequired().HasMaxLength(10);
+            entity.HasOne(e => e.ModelProfile)
+                .WithMany()
+                .HasForeignKey(e => e.ModelProfileId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.ReferenceVoice)
+                .WithMany()
+                .HasForeignKey(e => e.ReferenceVoiceId)
+                .OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<TtsJob>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.InputText).IsRequired();
+            entity.Property(e => e.OutputFileName).IsRequired().HasMaxLength(255);
+            entity.Property(e => e.Format).IsRequired().HasMaxLength(10);
+            entity.Property(e => e.Status)
+                .HasConversion<string>()
+                .HasMaxLength(20);
             entity.HasOne(e => e.ModelProfile)
                 .WithMany()
                 .HasForeignKey(e => e.ModelProfileId)
