@@ -6,22 +6,24 @@ A local Blazor Server dashboard for managing Fish Speech Docker containers with 
 
 ## Overview
 
-Fish Audio Orchestrator runs locally on Windows and manages [Fish Speech](https://github.com/fishaudio/fish-speech) Docker containers via Docker Desktop. It provides a web interface for deploying TTS models, managing a voice reference library, generating speech, and monitoring container health and GPU metrics in real time.
+Fish Audio Orchestrator runs locally on Windows and manages [Fish Speech](https://github.com/fishaudio/fish-speech) Docker containers via Docker Desktop. It provides a web interface for deploying TTS models, managing a voice reference library, generating speech via a background job queue, and monitoring container health and GPU metrics in real time.
 
 ## Features
 
 - **Docker container orchestration** — create, start, stop, swap, and remove Fish Speech containers
-- **Voice library** — upload reference audio for voice cloning, tag and organize voices
-- **TTS playground** — generate speech with format selection and optional voice cloning
-- **Real-time dashboard** — live container status, GPU memory/utilization, and TTS generation notifications via SignalR
-- **Container log streaming** — live Docker log viewer with backfill and per-container subscription
-- **Generation history** — searchable log of all TTS generations, scoped per user
+- **Voice library** — upload reference audio (10-30s WAV recommended) for voice cloning, tag and organize voices
+- **Background TTS job queue** — submit speech generation requests that process serially in the background; navigate freely while jobs run, with real-time status updates
+- **App restart resilience** — TTS generation runs inside the container via `docker exec curl`, surviving app restarts; on recovery, completed files are detected automatically
+- **Real-time dashboard** — live container status, GPU memory/core utilization (5-second refresh), and latest model output
+- **Container log streaming** — live Docker log viewer with backfill, per-container subscription, newest-first ordering
+- **Generation history** — log of all TTS generations with playback, download, and delete; updates dynamically when jobs complete
 - **Authentication** — ASP.NET Identity with mandatory TOTP/MFA
 - **Role-based access control** — Admin (full access) and User (TTS, voice browsing, own history)
 - **First-run setup wizard** — guided admin account creation with TOTP enrollment
-- **HTTPS** — optional automatic certificate provisioning via Let's Encrypt
+- **HTTPS** — optional automatic certificate provisioning via Let's Encrypt (ports 80/443)
 - **API gateway** — YARP reverse proxy for the Fish Speech TTS API
-- **Health monitoring** — periodic container health checks with automatic status updates
+- **Health monitoring** — periodic container health checks; uses Docker container status during active TTS generation to avoid false errors
+- **Server-side event bus** — in-process event system for real-time UI updates without client-side SignalR connections
 
 ## Prerequisites
 
@@ -30,7 +32,7 @@ Fish Audio Orchestrator runs locally on Windows and manages [Fish Speech](https:
 - [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
 - Fish Speech Docker image:
   ```bash
-  docker pull fishaudio/fish-speech:server-cuda
+  docker pull fishaudio/fish-speech:server-cuda-v2.0.0-beta
   ```
 
 ## Quick Start
@@ -38,7 +40,7 @@ Fish Audio Orchestrator runs locally on Windows and manages [Fish Speech](https:
 1. **Clone the repository**
 
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/sfidelisboxtechs/FishAudioOrchestrator.git
    cd FishAudioOrchestrator
    ```
 
@@ -50,26 +52,43 @@ Fish Audio Orchestrator runs locally on Windows and manages [Fish Speech](https:
    mkdir -p D:\DockerData\FishAudio\Output
    ```
 
-3. **Review configuration**
+3. **Download the Fish Speech model**
+
+   ```bash
+   git lfs install
+   git clone https://huggingface.co/fishaudio/s2-pro D:\DockerData\FishAudio\Checkpoints\s2-pro
+   ```
+
+4. **Review configuration**
 
    Edit `src/FishAudioOrchestrator.Web/appsettings.json` if you need to change the data root, Docker endpoint, or port range (see [Configuration](#configuration) below).
 
-4. **Run the application**
+5. **Run the application**
 
    ```bash
    dotnet run --project src/FishAudioOrchestrator.Web
    ```
 
-5. **Complete setup**
+6. **Complete setup**
 
-   Navigate to `https://localhost:5001`. The first-run setup wizard will guide you through:
-   - Optional FQDN configuration (for Let's Encrypt HTTPS)
+   Navigate to `http://localhost:5206`. The first-run setup wizard will guide you through:
    - Admin account creation
    - TOTP enrollment (scan QR code with your authenticator app)
 
-6. **Deploy a model**
+7. **Deploy a model**
 
-   Place Fish Speech model checkpoints in `D:\DockerData\FishAudio\Checkpoints\`, then use the Deploy page to register and start a model.
+   Go to the Deploy page and click Deploy. The checkpoint path defaults to `D:\DockerData\FishAudio\Checkpoints\s2-pro`. The model takes 4-5 minutes to initialize on first start.
+
+8. **Generate speech**
+
+   Navigate to the TTS Playground, enter text, and click "Submit to Queue". Jobs process in the background — you can navigate freely. Completed audio appears on the History page.
+
+## Model Notes
+
+- The **s2-pro** model requires the `server-cuda-v2.0.0-beta` Docker image (the latest `server-cuda` tag has a [torchaudio compatibility issue](https://github.com/fishaudio/fish-speech/issues/1118))
+- The model uses ~22 GB VRAM — on a 12 GB card it spills to system RAM, resulting in slower generation (~9s/token). A 24 GB+ GPU is recommended for production use
+- FP16 (`--half`) is enabled by default and recommended for cards with 12 GB VRAM or less
+- Voice cloning reference audio should be 10-30 seconds of clean WAV audio with an accompanying transcript
 
 ## Configuration
 
@@ -96,13 +115,15 @@ For automated deployments, set `FishOrchestrator__AdminUser` and `FishOrchestrat
 
 ## Architecture
 
-- **Blazor Server** (.NET 9) — interactive server-side UI
-- **SQLite** (EF Core) — model profiles, voice library, generation logs, Identity tables
+- **Blazor Server** (.NET 9) — interactive server-side UI with dark theme
+- **SQLite** (EF Core) — model profiles, voice library, generation logs, TTS job queue, Identity tables
 - **Docker.DotNet** — container lifecycle management via Docker Desktop
+- **docker exec curl** — TTS generation runs inside the container, writing output directly to mounted volume; survives app restarts
+- **OrchestratorEventBus** — singleton in-process event bus for real-time UI updates (replaces client-side SignalR hub connections)
 - **YARP** — reverse proxy routing to the active Fish Speech container
-- **SignalR** — real-time container status, GPU metrics, TTS notifications, log streaming
-- **ASP.NET Identity** — authentication with mandatory TOTP/MFA
-- **LettuceEncrypt** — automatic Let's Encrypt HTTPS (optional)
+- **SignalR** — hub retained for future external client support (authorized)
+- **ASP.NET Identity** — authentication with mandatory TOTP/MFA; cookie operations via API endpoints for Blazor Server compatibility
+- **LettuceEncrypt** — automatic Let's Encrypt HTTPS on ports 80/443 (optional, enabled when Domain is configured)
 
 Design specifications are in [`docs/superpowers/specs/`](docs/superpowers/specs/).
 
@@ -111,9 +132,6 @@ Design specifications are in [`docs/superpowers/specs/`](docs/superpowers/specs/
 ```bash
 # Build
 dotnet build
-
-# Run tests
-dotnet test
 
 # Run in development mode
 dotnet run --project src/FishAudioOrchestrator.Web
