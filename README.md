@@ -128,6 +128,7 @@ dotnet ef migrations add <MigrationName>
 ## To Do
 
 - [ ] Create a containerized Docker version of the Blazor app (publish prebuilt image to Docker Hub)
+  - [ ] Remove YARP reverse proxy from containerized app; provide general guidance on using a separate reverse proxy running externally in another Docker container
 - [ ] Create Linux native version (platform-aware paths, Linux setup instructions), and validate deployment on several Linux variants (Debian/Ubuntu, RH/Fedora, etc)
 - [ ] Performance enhancements
 
