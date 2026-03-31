@@ -101,6 +101,11 @@
                     <button class="btn btn-success w-100 mb-2" @onclick="StartModelDownload">Download Model (~11 GB)</button>
                     <button class="btn btn-outline-secondary w-100" @onclick="SkipModelDownload">Skip — I'll download it manually later</button>
                 }
+
+                <div class="text-center mt-4">
+                    <a href="https://huggingface.co/fishaudio/s2-pro/blob/main/LICENSE.md" target="_blank" class="text-muted"><strong>Built with Fish Audio</strong></a>
+                </div>
+                <p class="text-muted small text-center mt-2">The Fish Audio S2 Pro models are for non-commercial research use only. Commercial use requires a separate license from Fish Audio.</p>
             }
             else if (_step == 3)
             {
@@ -150,6 +155,11 @@
                 {
                     <button class="btn btn-success w-100" @onclick="StartDockerPull">Download Docker Image (~12 GB)</button>
                 }
+
+                <div class="text-center mt-4">
+                    <a href="https://huggingface.co/fishaudio/s2-pro/blob/main/LICENSE.md" target="_blank" class="text-muted"><strong>Built with Fish Audio</strong></a>
+                </div>
+                <p class="text-muted small text-center mt-2">The Fish Audio S2 Pro models are for non-commercial research use only. Commercial use requires a separate license from Fish Audio.</p>
             }
             else if (_step == 4)
             {

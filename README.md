@@ -125,6 +125,14 @@ cd src/FishAudioOrchestrator.Web
 dotnet ef migrations add <MigrationName>
 ```
 
+## Attribution
+
+This product includes Fish Audio Materials developed by [Fish Audio](https://fish.audio). Copyright (c) 2026 Fish Audio. All Rights Reserved.
+
+**Built with Fish Audio.** The Fish Audio S2 Pro models are for non-commercial research use only. Commercial use requires a separate license from Fish Audio. See the [Fish Audio Research License](https://huggingface.co/fishaudio/s2-pro/blob/main/LICENSE.md) for details.
+
 ## License
 
 This project is licensed under the GNU General Public License v3.0 — see the [LICENSE](LICENSE) file for details.
+
+See [NOTICE](NOTICE) for third-party attribution requirements.
