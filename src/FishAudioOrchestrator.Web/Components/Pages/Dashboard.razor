@@ -200,7 +200,7 @@ else
         _ = InvokeAsync(() => OnContainerStatus(events));
     }
 
-    private async Task OnContainerStatus(List<ContainerStatusEvent> events)
+    private void OnContainerStatus(List<ContainerStatusEvent> events)
     {
         foreach (var evt in events)
         {
@@ -238,7 +238,7 @@ else
         _ = InvokeAsync(() => OnTtsNotification(notification));
     }
 
-    private async Task OnTtsNotification(TtsNotificationEvent notification)
+    private void OnTtsNotification(TtsNotificationEvent notification)
     {
         _toast = notification;
         StateHasChanged();

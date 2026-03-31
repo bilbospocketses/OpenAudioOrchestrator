@@ -117,12 +117,13 @@
         public string ConfirmPassword { get; set; } = "";
     }
 
-    protected override async Task OnInitializedAsync()
+    protected override Task OnInitializedAsync()
     {
         if (UserManager.Users.Any())
         {
             Nav.NavigateTo("/", forceLoad: true);
         }
+        return Task.CompletedTask;
     }
 
     private void GoToStep2()
