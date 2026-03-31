@@ -9,6 +9,7 @@ using FishAudioOrchestrator.Web.Services;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
+using Yarp.ReverseProxy.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -63,6 +64,7 @@ builder.Services.AddSingleton<IDockerClient>(_ =>
 // YARP reverse proxy
 var proxyProvider = new FishProxyConfigProvider();
 builder.Services.AddSingleton(proxyProvider);
+builder.Services.AddSingleton<IProxyConfigProvider>(proxyProvider);
 builder.Services.AddReverseProxy();
 
 // Application services
