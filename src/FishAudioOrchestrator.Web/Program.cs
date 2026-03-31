@@ -83,7 +83,7 @@ builder.Services.AddScoped<IDockerOrchestratorService, DockerOrchestratorService
 builder.Services.AddScoped<IVoiceLibraryService, VoiceLibraryService>();
 builder.Services.AddHttpClient<ITtsClientService, TtsClientService>(client =>
 {
-    client.Timeout = TimeSpan.FromMinutes(30);
+    client.Timeout = Timeout.InfiniteTimeSpan;
 });
 builder.Services.AddScoped<ITotpService, TotpService>();
 builder.Services.AddScoped<IAdminSeedService, AdminSeedService>();
