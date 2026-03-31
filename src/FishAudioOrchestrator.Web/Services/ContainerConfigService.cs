@@ -23,9 +23,15 @@ public class ContainerConfigService : IContainerConfigService
     {
         var dataRoot = _config["FishOrchestrator:DataRoot"]!;
 
+        var checkpointsRoot = Path.Combine(dataRoot, "Checkpoints");
+        var subFolder = Path.GetRelativePath(checkpointsRoot, profile.CheckpointPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        var containerCheckpointPath = $"checkpoints/{subFolder.Replace('\\', '/')}";
+
         var env = new List<string>
         {
-            "COMPILE=0"
+            "COMPILE=0",
+            $"LLAMA_CHECKPOINT_PATH={containerCheckpointPath}",
+            $"DECODER_CHECKPOINT_PATH={containerCheckpointPath}/codec.pth"
         };
 
         if (!string.IsNullOrWhiteSpace(profile.CudaAllocConf))
@@ -60,7 +66,7 @@ public class ContainerConfigService : IContainerConfigService
                 },
                 Binds = new List<string>
                 {
-                    $@"{profile.CheckpointPath}:/app/checkpoints",
+                    $@"{Path.Combine(dataRoot, "Checkpoints")}:/app/checkpoints",
                     $@"{Path.Combine(dataRoot, "References")}:/app/references",
                     $@"{Path.Combine(dataRoot, "Output")}:/app/output"
                 },

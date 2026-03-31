@@ -80,8 +80,11 @@ public class HealthMonitorService : BackgroundService
                 "Health check failed for {ModelName} ({Failures} consecutive)",
                 running.Name, _consecutiveFailures);
 
-            running.Status = ModelStatus.Error;
-            await context.SaveChangesAsync();
+            if (_consecutiveFailures >= 5)
+            {
+                running.Status = ModelStatus.Error;
+                await context.SaveChangesAsync();
+            }
         }
 
         // Push container status for all models
