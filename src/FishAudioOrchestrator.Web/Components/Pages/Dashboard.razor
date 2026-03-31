@@ -39,24 +39,6 @@
     </div>
 </div>
 
-@if (_activeModel is not null)
-{
-    <div class="active-banner d-flex align-items-center">
-        <span class="status-dot running"></span>
-        <div class="flex-grow-1">
-            <strong>@_activeModel.Name</strong>
-            <small class="text-muted ms-2">
-                Port @_activeModel.HostPort · FP16 @(_activeModel.EnableHalf ? "enabled" : "disabled")
-                @if (_activeModel.LastStartedAt.HasValue)
-                {
-                    <text> · Started @_activeModel.LastStartedAt.Value.ToLocalTime().ToString("g")</text>
-                }
-            </small>
-        </div>
-        <button class="btn btn-sm btn-danger" @onclick="() => RequestStop(_activeModel)">Stop</button>
-    </div>
-}
-
 @if (_models.Count == 0)
 {
     <div class="alert alert-info">
@@ -78,18 +60,30 @@ else
         <tbody>
             @foreach (var model in _models)
             {
-                <tr>
+                <tr class="@(model.Status == ModelStatus.Running ? "active-row" : "")">
                     <td>
                         <span class="status-dot @model.Status.ToString().ToLower()"></span>
                         <StatusBadge Status="model.Status" />
                     </td>
-                    <td>@model.Name</td>
+                    <td>
+                        @model.Name
+                        @if (model.Status == ModelStatus.Running)
+                        {
+                            <small class="text-muted ms-2">
+                                FP16 @(model.EnableHalf ? "on" : "off")
+                                @if (model.LastStartedAt.HasValue)
+                                {
+                                    <text> · Started @model.LastStartedAt.Value.ToLocalTime().ToString("g")</text>
+                                }
+                            </small>
+                        }
+                    </td>
                     <td><small class="text-muted">@model.CheckpointPath</small></td>
                     <td>@model.HostPort</td>
                     <td>
                         @if (model.Status == ModelStatus.Running)
                         {
-                            <button class="btn btn-sm btn-warning" @onclick="() => RequestStop(model)">Stop</button>
+                            <button class="btn btn-sm btn-danger" @onclick="() => RequestStop(model)">Stop</button>
                         }
                         else
                         {

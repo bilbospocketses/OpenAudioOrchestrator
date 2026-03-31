@@ -181,14 +181,11 @@ a:hover {
     background-color: #60a5fa;
 }
 
-/* --- Active banner --------------------------------------------------- */
+/* --- Active (running) table row -------------------------------------- */
 
-.active-banner {
+.table tbody tr.active-row {
     background-color: rgba(16, 185, 129, 0.1);
-    border: 1px solid #10b981;
-    border-radius: 8px;
-    padding: 1rem;
-    margin-bottom: 1rem;
+    border-left: 3px solid #10b981;
 }
 
 /* --- Modal ----------------------------------------------------------- */
