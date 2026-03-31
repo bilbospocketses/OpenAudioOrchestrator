@@ -97,6 +97,7 @@ builder.Services.AddSignalR();
 builder.Services.AddSingleton<IContainerLogService, ContainerLogService>();
 builder.Services.AddSingleton<GpuMetricsState>();
 builder.Services.AddSingleton<OrchestratorEventBus>();
+builder.Services.AddSingleton<SetupService>();
 
 var app = builder.Build();
 
