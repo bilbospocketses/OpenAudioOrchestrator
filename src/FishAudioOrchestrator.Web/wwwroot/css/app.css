@@ -259,7 +259,7 @@ a:hover {
 /* --- Audio controls -------------------------------------------------- */
 
 audio {
-    min-width: 250px;
+    min-width: 300px;
 }
 
 /* --- Scrollbars (pre / overflow containers) -------------------------- */

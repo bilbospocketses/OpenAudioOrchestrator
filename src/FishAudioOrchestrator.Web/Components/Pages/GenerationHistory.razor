@@ -5,6 +5,7 @@
 @using FishAudioOrchestrator.Web.Data
 @using Microsoft.AspNetCore.Identity
 @inject UserManager<AppUser> UserManager
+@inject IConfiguration Config
 
 <PageTitle>Generation History — Fish Orchestrator</PageTitle>
 
@@ -29,6 +30,7 @@ else
                 <th>Duration</th>
                 <th>Audio</th>
                 <th>Download</th>
+                <th></th>
             </tr>
         </thead>
         <tbody>
@@ -49,6 +51,9 @@ else
                     <td>
                         <a href="/audio/output/@log.OutputFileName" download
                            class="btn btn-sm btn-outline-primary">DL</a>
+                    </td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteEntry(log)">Del</button>
                     </td>
                 </tr>
             }
@@ -78,6 +83,21 @@ else
         }
 
         _logs = await query.OrderByDescending(l => l.CreatedAt).ToListAsync();
+    }
+
+    private async Task DeleteEntry(GenerationLog log)
+    {
+        var dataRoot = Config["FishOrchestrator:DataRoot"] ?? @"D:\DockerData\FishAudio";
+        var filePath = Path.Combine(dataRoot, "Output", log.OutputFileName);
+
+        if (File.Exists(filePath))
+        {
+            File.Delete(filePath);
+        }
+
+        Db.GenerationLogs.Remove(log);
+        await Db.SaveChangesAsync();
+        _logs.Remove(log);
     }
 
     private static string Truncate(string text, int maxLength) =>
