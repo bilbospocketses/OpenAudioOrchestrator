@@ -19,7 +19,7 @@ Fish Audio Orchestrator runs locally on Windows and manages [Fish Speech](https:
 - **Generation history** — log of all TTS generations with playback, download, and delete; updates dynamically when jobs complete
 - **Authentication** — ASP.NET Identity with mandatory TOTP/MFA
 - **Role-based access control** — Admin (full access) and User (TTS, voice browsing, own history)
-- **First-run setup wizard** — guided admin account creation with TOTP enrollment
+- **First-run setup wizard** — 7-step guided installer covering data directories, model download, Docker image pull, server configuration, admin account creation, and TOTP enrollment
 - **HTTPS** — optional automatic certificate provisioning via Let's Encrypt (ports 80/443)
 - **API gateway** — YARP reverse proxy for the Fish Speech TTS API
 - **Health monitoring** — periodic container health checks; uses Docker container status during active TTS generation to avoid false errors
@@ -30,56 +30,40 @@ Fish Audio Orchestrator runs locally on Windows and manages [Fish Speech](https:
 - Windows 10/11 with [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 - NVIDIA GPU with CUDA drivers (tested on RTX 3060 12 GB)
 - [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
-- Fish Speech Docker image:
-  ```bash
-  docker pull fishaudio/fish-speech:server-cuda-v2.0.0-beta
-  ```
+- [Git](https://git-scm.com/) with [Git LFS](https://git-lfs.com/) (for model download during setup)
 
 ## Quick Start
 
-1. **Clone the repository**
+1. **Clone and run**
 
    ```bash
    git clone https://github.com/sfidelisboxtechs/FishAudioOrchestrator.git
    cd FishAudioOrchestrator
-   ```
-
-2. **Create data directories**
-
-   ```bash
-   mkdir -p D:\DockerData\FishAudio\Checkpoints
-   mkdir -p D:\DockerData\FishAudio\References
-   mkdir -p D:\DockerData\FishAudio\Output
-   ```
-
-3. **Download the Fish Speech model**
-
-   ```bash
-   git lfs install
-   git clone https://huggingface.co/fishaudio/s2-pro D:\DockerData\FishAudio\Checkpoints\s2-pro
-   ```
-
-4. **Review configuration**
-
-   Edit `src/FishAudioOrchestrator.Web/appsettings.json` if you need to change the data root, Docker endpoint, or port range (see [Configuration](#configuration) below).
-
-5. **Run the application**
-
-   ```bash
    dotnet run --project src/FishAudioOrchestrator.Web
    ```
 
-6. **Complete setup**
+2. **Complete the setup wizard**
 
-   Navigate to `http://localhost:5206`. The first-run setup wizard will guide you through:
-   - Admin account creation
-   - TOTP enrollment (scan QR code with your authenticator app)
+   Navigate to `http://localhost:5206`. The 7-step setup wizard will guide you through:
+   1. **Data Storage** — choose directories for checkpoints, references, and output files
+   2. **Model Download** — download the Fish Audio s2-pro model (~11 GB) from HuggingFace, or skip to download later
+   3. **Docker Image** — download the Fish Speech Docker image (~12 GB)
+   4. **Server Configuration** — container port range, optional domain + HTTPS via Let's Encrypt
+   5. **Admin Account** — create your administrator username and password
+   6. **TOTP Setup** — scan QR code with your authenticator app
+   7. **Complete** — review settings and restart instructions
 
-7. **Deploy a model**
+   Downloads in steps 2 and 3 can run in the background while you continue through the wizard. The final page will wait for any active downloads to complete before showing restart instructions.
 
-   Go to the Deploy page and click Deploy. The checkpoint path defaults to `D:\DockerData\FishAudio\Checkpoints\s2-pro`. The model takes 4-5 minutes to initialize on first start.
+3. **Restart and log in**
 
-8. **Generate speech**
+   Stop the app (Ctrl+C) and restart it. Navigate to the URL shown in the setup summary. Log in with your admin credentials.
+
+4. **Deploy a model**
+
+   Go to the Deploy page and click Deploy. The model takes 4-5 minutes to initialize on first start. If the model was not downloaded during setup, the Deploy page will offer to download it.
+
+5. **Generate speech**
 
    Navigate to the TTS Playground, enter text, and click "Submit to Queue". Jobs process in the background — you can navigate freely. Completed audio appears on the History page.
 
@@ -92,7 +76,7 @@ Fish Audio Orchestrator runs locally on Windows and manages [Fish Speech](https:
 
 ## Configuration
 
-All configuration is in `src/FishAudioOrchestrator.Web/appsettings.json`:
+Most settings are configured automatically by the setup wizard. For advanced use or manual changes, edit `src/FishAudioOrchestrator.Web/appsettings.json`:
 
 | Key | Description | Default |
 |-----|-------------|---------|
