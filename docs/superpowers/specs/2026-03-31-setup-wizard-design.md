@@ -163,20 +163,27 @@ Existing step 3 from the current wizard, renumbered. No logic changes.
 
 **Title:** "Setup Complete"
 
-**Summary panel showing:**
-- Data directories configured
-- Model download status (downloaded / skipped)
-- Docker image status (downloaded / skipped)
-- Port range
-- Domain (if configured)
-- Admin account created
-- TOTP enabled
+**Important:** Downloads started in steps 2 and 3 are child processes of the app. If the app is stopped before they finish, the downloads are killed and must restart from scratch. This step gates the restart instructions behind download completion.
 
-**Restart instructions:**
-- "Stop the application (Ctrl+C in the terminal) and restart with:"
-- `dotnet run --project src/FishAudioOrchestrator.Web`
-- If domain was set: "Then navigate to **https://yourdomain.com**"
-- If no domain: "Then navigate to **http://localhost:5206**"
+**Behavior:**
+- If any background downloads (model or Docker image) are still in progress:
+  - Show progress meters for each active download with streaming output
+  - Show message: "Downloads are still in progress. Please wait for them to complete before restarting the application. Stopping the app now will cancel the downloads and they will need to start over."
+  - The restart instructions and summary are hidden until all downloads complete
+- Once all downloads are complete (or were skipped/already present):
+  - Show summary panel:
+    - Data directories configured
+    - Model download status (downloaded / skipped)
+    - Docker image status (downloaded / skipped)
+    - Port range
+    - Domain (if configured)
+    - Admin account created
+    - TOTP enabled
+  - Show restart instructions:
+    - "Stop the application (Ctrl+C in the terminal) and restart with:"
+    - `dotnet run --project src/FishAudioOrchestrator.Web`
+    - If domain was set: "Then navigate to **https://yourdomain.com**"
+    - If no domain: "Then navigate to **http://localhost:5206**"
 
 ---
 
