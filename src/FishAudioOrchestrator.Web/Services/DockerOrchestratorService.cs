@@ -48,6 +48,33 @@ public class DockerOrchestratorService : IDockerOrchestratorService
 
     public async Task CreateAndStartModelAsync(ModelProfile profile)
     {
+        // If we already have a container ID, try to start the existing container
+        if (profile.ContainerId is not null)
+        {
+            try
+            {
+                var inspect = await _docker.Containers.InspectContainerAsync(profile.ContainerId);
+                // Container exists — start it if not already running
+                if (inspect.State.Status != "running")
+                {
+                    await _docker.Containers.StartContainerAsync(
+                        profile.ContainerId, new ContainerStartParameters());
+                }
+
+                profile.Status = ModelStatus.Running;
+                profile.LastStartedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+                await UpdateProxyAsync(profile);
+                await PushStatusUpdateAsync();
+                return;
+            }
+            catch (DockerContainerNotFoundException)
+            {
+                // Container was removed externally — fall through to create a new one
+                profile.ContainerId = null;
+            }
+        }
+
         var createParams = _configService.BuildCreateParams(profile);
         var response = await _docker.Containers.CreateContainerAsync(createParams);
         profile.ContainerId = response.ID;
@@ -58,20 +85,21 @@ public class DockerOrchestratorService : IDockerOrchestratorService
         profile.Status = ModelStatus.Running;
         profile.LastStartedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
+        await UpdateProxyAsync(profile);
+        await PushStatusUpdateAsync();
+    }
 
-        // Update YARP proxy with container's bridge network IP
-        var containerIp = await _networkService.GetContainerIpAsync(response.ID);
+    private async Task UpdateProxyAsync(ModelProfile profile)
+    {
+        var containerIp = await _networkService.GetContainerIpAsync(profile.ContainerId!);
         if (containerIp is not null)
         {
             _proxyProvider.UpdateDestination($"http://{containerIp}:8080");
         }
         else
         {
-            // Fallback to host port if bridge IP unavailable
             _proxyProvider.UpdateDestination($"http://localhost:{profile.HostPort}");
         }
-
-        await PushStatusUpdateAsync();
     }
 
     public async Task StopModelAsync(ModelProfile profile)
