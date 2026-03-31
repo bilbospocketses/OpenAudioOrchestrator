@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="src/FishAudioOrchestrator.Web/wwwroot/logo.png" alt="Fish Audio Orchestrator" width="128" />
+</p>
+
 # Fish Audio Orchestrator
 
 A local Blazor Server dashboard for managing Fish Speech Docker containers with voice cloning, TTS generation, and real-time monitoring.
