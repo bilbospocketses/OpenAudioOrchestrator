@@ -90,18 +90,18 @@ public class TtsJobProcessor : BackgroundService
 
         job.Status = TtsJobStatus.Processing;
         job.StartedAt = DateTime.UtcNow;
-        await db.SaveChangesAsync(stoppingToken);
+        await db.SaveChangesAsync(CancellationToken.None);
         _eventBus.RaiseTtsJobStatus(new TtsJobStatusEvent(job.Id, "Processing", null));
 
         var model = await db.ModelProfiles
-            .FirstOrDefaultAsync(m => m.Status == ModelStatus.Running, stoppingToken);
+            .FirstOrDefaultAsync(m => m.Status == ModelStatus.Running || m.Status == ModelStatus.Error, stoppingToken);
 
         if (model is null)
         {
             job.Status = TtsJobStatus.Failed;
             job.ErrorMessage = "No running model available";
             job.CompletedAt = DateTime.UtcNow;
-            await db.SaveChangesAsync(stoppingToken);
+            await db.SaveChangesAsync(CancellationToken.None);
             _eventBus.RaiseTtsJobStatus(new TtsJobStatusEvent(job.Id, "Failed", job.ErrorMessage));
             return;
         }
@@ -121,17 +121,24 @@ public class TtsJobProcessor : BackgroundService
                 job.ModelProfileId, job.ReferenceVoiceId);
 
             db.TtsJobs.Remove(job);
-            await db.SaveChangesAsync(stoppingToken);
+            await db.SaveChangesAsync(CancellationToken.None);
             _eventBus.RaiseTtsJobStatus(new TtsJobStatusEvent(job.Id, "Completed", null));
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
         {
             _logger.LogError(ex, "TTS job {JobId} failed", job.Id);
-            job.Status = TtsJobStatus.Failed;
-            job.ErrorMessage = ex.Message;
-            job.CompletedAt = DateTime.UtcNow;
-            await db.SaveChangesAsync(stoppingToken);
-            _eventBus.RaiseTtsJobStatus(new TtsJobStatusEvent(job.Id, "Failed", ex.Message));
+            try
+            {
+                job.Status = TtsJobStatus.Failed;
+                job.ErrorMessage = ex.Message;
+                job.CompletedAt = DateTime.UtcNow;
+                await db.SaveChangesAsync(CancellationToken.None);
+                _eventBus.RaiseTtsJobStatus(new TtsJobStatusEvent(job.Id, "Failed", ex.Message));
+            }
+            catch (Exception saveEx)
+            {
+                _logger.LogError(saveEx, "Failed to update job {JobId} status to Failed", job.Id);
+            }
         }
     }
 
