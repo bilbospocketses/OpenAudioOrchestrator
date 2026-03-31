@@ -9,6 +9,7 @@
 @using Microsoft.AspNetCore.Identity
 @inject UserManager<AppUser> UserManager
 @inject OrchestratorEventBus EventBus
+@inject TtsJobProcessor JobProcessor
 @implements IAsyncDisposable
 
 <PageTitle>TTS Playground — Fish Orchestrator</PageTitle>
@@ -110,7 +111,11 @@ else
                     <td><code>@job.Format</code></td>
                     <td><small>@job.CreatedAt.ToLocalTime().ToString("t")</small></td>
                     <td>
-                        @if (job.Status == TtsJobStatus.Queued)
+                        @if (job.Status == TtsJobStatus.Processing)
+                        {
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => CancelProcessingJob(job)">Cancel</button>
+                        }
+                        else if (job.Status == TtsJobStatus.Queued)
                         {
                             <button class="btn btn-sm btn-outline-warning" @onclick="() => CancelJob(job)">Cancel</button>
                         }
@@ -254,6 +259,13 @@ else
 
         _jobs.Add(job);
         _inputText = "";
+    }
+
+    private async Task CancelProcessingJob(TtsJob job)
+    {
+        await JobProcessor.CancelJobAsync(job.Id);
+        job.Status = TtsJobStatus.Failed;
+        job.ErrorMessage = "Cancelled by user";
     }
 
     private async Task CancelJob(TtsJob job)
