@@ -6,6 +6,10 @@
 @using Microsoft.AspNetCore.Identity
 @inject UserManager<AppUser> UserManager
 @inject IConfiguration Config
+@using FishAudioOrchestrator.Web.Hubs
+@using FishAudioOrchestrator.Web.Services
+@inject OrchestratorEventBus EventBus
+@implements IDisposable
 
 <PageTitle>Generation History — Fish Orchestrator</PageTitle>
 
@@ -90,6 +94,32 @@ else
         }
 
         _logs = await query.OrderByDescending(l => l.CreatedAt).ToListAsync();
+
+        EventBus.OnTtsNotification += OnTtsNotificationRaw;
+    }
+
+    private void OnTtsNotificationRaw(TtsNotificationEvent notification)
+    {
+        if (!notification.Success) return;
+
+        _ = InvokeAsync(async () =>
+        {
+            var newLog = await Db.GenerationLogs
+                .Include(l => l.ModelProfile)
+                .Include(l => l.ReferenceVoice)
+                .FirstOrDefaultAsync(l => l.OutputFileName == notification.OutputFileName);
+
+            if (newLog is not null && !_logs.Any(l => l.Id == newLog.Id))
+            {
+                _logs.Insert(0, newLog);
+                StateHasChanged();
+            }
+        });
+    }
+
+    public void Dispose()
+    {
+        EventBus.OnTtsNotification -= OnTtsNotificationRaw;
     }
 
     private void RequestDelete(GenerationLog log)
