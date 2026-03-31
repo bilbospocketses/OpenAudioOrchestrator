@@ -128,6 +128,7 @@ dotnet ef migrations add <MigrationName>
 ## To Do
 
 - [ ] Create a containerized Docker version of the Blazor app (publish prebuilt image to Docker Hub)
+- [ ] Create Linux native version (platform-aware paths, Linux setup instructions)
 - [ ] Performance enhancements
 
 ## Attribution
