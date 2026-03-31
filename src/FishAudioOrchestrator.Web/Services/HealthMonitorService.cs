@@ -17,6 +17,7 @@ public class HealthMonitorService : BackgroundService
     private readonly ILogger<HealthMonitorService> _logger;
     private readonly IHubContext<OrchestratorHub> _hub;
     private readonly GpuMetricsState _gpuState;
+    private readonly OrchestratorEventBus _eventBus;
     private int _consecutiveFailures;
 
     public HealthMonitorService(
@@ -24,7 +25,8 @@ public class HealthMonitorService : BackgroundService
         IConfiguration config,
         ILogger<HealthMonitorService> logger,
         IHubContext<OrchestratorHub> hub,
-        GpuMetricsState gpuState)
+        GpuMetricsState gpuState,
+        OrchestratorEventBus eventBus)
     {
         _scopeFactory = scopeFactory;
         _intervalSeconds = int.Parse(
@@ -32,6 +34,7 @@ public class HealthMonitorService : BackgroundService
         _logger = logger;
         _hub = hub;
         _gpuState = gpuState;
+        _eventBus = eventBus;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -86,6 +89,7 @@ public class HealthMonitorService : BackgroundService
         var statusEvents = allModels.Select(m => new ContainerStatusEvent(
             m.Id, m.Name, m.Status.ToString(), m.HostPort, m.LastStartedAt)).ToList();
         await _hub.Clients.All.SendAsync("ReceiveContainerStatus", statusEvents);
+        _eventBus.RaiseContainerStatus(statusEvents);
 
         // Collect and push GPU metrics
         var gpuMetrics = await GpuMetricsParser.CollectAsync();
@@ -93,6 +97,7 @@ public class HealthMonitorService : BackgroundService
         {
             _gpuState.Update(gpuMetrics);
             await _hub.Clients.All.SendAsync("ReceiveGpuMetrics", gpuMetrics);
+            _eventBus.RaiseGpuMetrics(gpuMetrics);
         }
     }
 }

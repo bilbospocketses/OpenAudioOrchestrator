@@ -17,6 +17,7 @@ public class DockerOrchestratorService : IDockerOrchestratorService
     private readonly FishProxyConfigProvider _proxyProvider;
     private readonly IDockerNetworkService _networkService;
     private readonly IHubContext<OrchestratorHub> _hub;
+    private readonly OrchestratorEventBus _eventBus;
 
     public DockerOrchestratorService(
         IDockerClient docker,
@@ -24,7 +25,8 @@ public class DockerOrchestratorService : IDockerOrchestratorService
         AppDbContext context,
         FishProxyConfigProvider proxyProvider,
         IDockerNetworkService networkService,
-        IHubContext<OrchestratorHub> hub)
+        IHubContext<OrchestratorHub> hub,
+        OrchestratorEventBus eventBus)
     {
         _docker = docker;
         _configService = configService;
@@ -32,6 +34,7 @@ public class DockerOrchestratorService : IDockerOrchestratorService
         _proxyProvider = proxyProvider;
         _networkService = networkService;
         _hub = hub;
+        _eventBus = eventBus;
     }
 
     private async Task PushStatusUpdateAsync()
@@ -40,6 +43,7 @@ public class DockerOrchestratorService : IDockerOrchestratorService
         var statusEvents = allModels.Select(m => new ContainerStatusEvent(
             m.Id, m.Name, m.Status.ToString(), m.HostPort, m.LastStartedAt)).ToList();
         await _hub.Clients.All.SendAsync("ReceiveContainerStatus", statusEvents);
+        _eventBus.RaiseContainerStatus(statusEvents);
     }
 
     public async Task CreateAndStartModelAsync(ModelProfile profile)

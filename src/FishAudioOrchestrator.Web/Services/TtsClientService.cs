@@ -15,14 +15,16 @@ public class TtsClientService : ITtsClientService
     private readonly string _outputPath;
     private readonly AppDbContext _context;
     private readonly IHubContext<OrchestratorHub> _hub;
+    private readonly OrchestratorEventBus _eventBus;
 
-    public TtsClientService(HttpClient httpClient, IConfiguration config, AppDbContext context, IHubContext<OrchestratorHub> hub)
+    public TtsClientService(HttpClient httpClient, IConfiguration config, AppDbContext context, IHubContext<OrchestratorHub> hub, OrchestratorEventBus eventBus)
     {
         _httpClient = httpClient;
         var dataRoot = config["FishOrchestrator:DataRoot"]!;
         _outputPath = Path.Combine(dataRoot, "Output");
         _context = context;
         _hub = hub;
+        _eventBus = eventBus;
     }
 
     public async Task<TtsResult> GenerateAsync(string containerBaseUrl, TtsRequest request,
@@ -58,6 +60,7 @@ public class TtsClientService : ITtsClientService
                 true,
                 null);
             await _hub.Clients.All.SendAsync("ReceiveTtsNotification", notification);
+            _eventBus.RaiseTtsNotification(notification);
 
             return new TtsResult
             {
@@ -76,6 +79,7 @@ public class TtsClientService : ITtsClientService
                 false,
                 ex.Message);
             await _hub.Clients.All.SendAsync("ReceiveTtsNotification", failNotification);
+            _eventBus.RaiseTtsNotification(failNotification);
             throw;
         }
     }
