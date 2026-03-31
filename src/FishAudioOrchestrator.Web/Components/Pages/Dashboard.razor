@@ -6,8 +6,9 @@
 @using Microsoft.EntityFrameworkCore
 @using FishAudioOrchestrator.Web.Data
 @using FishAudioOrchestrator.Web.Hubs
-@using Microsoft.AspNetCore.SignalR.Client
 @implements IAsyncDisposable
+@inject OrchestratorEventBus EventBus
+@inject IContainerLogService LogService
 
 <PageTitle>Dashboard — Fish Orchestrator</PageTitle>
 
@@ -169,8 +170,8 @@ else
     private bool _logExpanded;
     private List<string> _logLines = new();
     private TtsNotificationEvent? _toast;
-    private HubConnection? _hubConnection;
     private string? _subscribedContainerId;
+    private readonly string _subscriberId = Guid.NewGuid().ToString();
 
     private ConfirmDialog _confirmDialog = null!;
     private string _confirmTitle = "";
@@ -178,29 +179,25 @@ else
     private string _confirmButtonText = "Confirm";
     private EventCallback _confirmAction;
 
-    [Inject] private NavigationManager Nav { get; set; } = null!;
-
     protected override async Task OnInitializedAsync()
     {
         await LoadModels();
         GpuState.OnChange += OnGpuChange;
 
-        _hubConnection = new HubConnectionBuilder()
-            .WithUrl(Nav.ToAbsoluteUri("/hubs/orchestrator"))
-            .WithAutomaticReconnect()
-            .Build();
-
-        _hubConnection.On<List<ContainerStatusEvent>>("ReceiveContainerStatus", OnContainerStatus);
-        _hubConnection.On<TtsNotificationEvent>("ReceiveTtsNotification", OnTtsNotification);
-        _hubConnection.On<LogLineEvent>("ReceiveLogLine", OnLogLine);
-
-        await _hubConnection.StartAsync();
+        EventBus.OnContainerStatus += OnContainerStatusRaw;
+        EventBus.OnTtsNotification += OnTtsNotificationRaw;
+        EventBus.OnLogLine += OnLogLineRaw;
 
         if (_activeModel?.ContainerId is not null)
         {
             _subscribedContainerId = _activeModel.ContainerId;
-            await _hubConnection.InvokeAsync("SubscribeLogs", _subscribedContainerId);
+            LogService.SubscribeCallback(_subscribedContainerId, _subscriberId, OnLogLineRaw);
         }
+    }
+
+    private void OnContainerStatusRaw(List<ContainerStatusEvent> events)
+    {
+        _ = InvokeAsync(() => OnContainerStatus(events));
     }
 
     private async Task OnContainerStatus(List<ContainerStatusEvent> events)
@@ -218,28 +215,33 @@ else
 
         var newActive = _models.FirstOrDefault(m => m.Status == ModelStatus.Running);
 
-        if (newActive?.ContainerId != _subscribedContainerId && _hubConnection is not null)
+        if (newActive?.ContainerId != _subscribedContainerId)
         {
             if (_subscribedContainerId is not null)
             {
-                await _hubConnection.InvokeAsync("UnsubscribeLogs", _subscribedContainerId);
+                LogService.UnsubscribeCallback(_subscribedContainerId, _subscriberId);
                 _logLines.Clear();
             }
             _subscribedContainerId = newActive?.ContainerId;
             if (_subscribedContainerId is not null)
             {
-                await _hubConnection.InvokeAsync("SubscribeLogs", _subscribedContainerId);
+                LogService.SubscribeCallback(_subscribedContainerId, _subscriberId, OnLogLineRaw);
             }
         }
 
         _activeModel = newActive;
-        await InvokeAsync(StateHasChanged);
+        StateHasChanged();
+    }
+
+    private void OnTtsNotificationRaw(TtsNotificationEvent notification)
+    {
+        _ = InvokeAsync(() => OnTtsNotification(notification));
     }
 
     private async Task OnTtsNotification(TtsNotificationEvent notification)
     {
         _toast = notification;
-        await InvokeAsync(StateHasChanged);
+        StateHasChanged();
 
         _ = Task.Run(async () =>
         {
@@ -252,11 +254,14 @@ else
         });
     }
 
-    private async Task OnLogLine(LogLineEvent logLine)
+    private void OnLogLineRaw(LogLineEvent logLine)
     {
-        _logLines.Add($"[{logLine.Timestamp:HH:mm:ss}] {logLine.Line}");
-        if (_logLines.Count > 100) _logLines.RemoveRange(0, _logLines.Count - 100);
-        await InvokeAsync(StateHasChanged);
+        _ = InvokeAsync(() =>
+        {
+            _logLines.Add($"[{logLine.Timestamp:HH:mm:ss}] {logLine.Line}");
+            if (_logLines.Count > 100) _logLines.RemoveRange(0, _logLines.Count - 100);
+            StateHasChanged();
+        });
     }
 
     private void OnGpuChange()
@@ -334,16 +339,18 @@ else
         finally { _isOperating = false; }
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
         GpuState.OnChange -= OnGpuChange;
-        if (_hubConnection is not null)
+        EventBus.OnContainerStatus -= OnContainerStatusRaw;
+        EventBus.OnTtsNotification -= OnTtsNotificationRaw;
+        EventBus.OnLogLine -= OnLogLineRaw;
+
+        if (_subscribedContainerId is not null)
         {
-            if (_subscribedContainerId is not null)
-            {
-                try { await _hubConnection.InvokeAsync("UnsubscribeLogs", _subscribedContainerId); } catch { }
-            }
-            await _hubConnection.DisposeAsync();
+            LogService.UnsubscribeCallback(_subscribedContainerId, _subscriberId);
         }
+
+        return ValueTask.CompletedTask;
     }
 }
