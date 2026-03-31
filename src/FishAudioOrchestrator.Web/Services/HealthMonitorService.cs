@@ -13,7 +13,6 @@ namespace FishAudioOrchestrator.Web.Services;
 public class HealthMonitorService : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
-    private readonly ITtsClientService _ttsClient;
     private readonly int _intervalSeconds;
     private readonly ILogger<HealthMonitorService> _logger;
     private readonly IHubContext<OrchestratorHub> _hub;
@@ -22,14 +21,12 @@ public class HealthMonitorService : BackgroundService
 
     public HealthMonitorService(
         IServiceScopeFactory scopeFactory,
-        ITtsClientService ttsClient,
         IConfiguration config,
         ILogger<HealthMonitorService> logger,
         IHubContext<OrchestratorHub> hub,
         GpuMetricsState gpuState)
     {
         _scopeFactory = scopeFactory;
-        _ttsClient = ttsClient;
         _intervalSeconds = int.Parse(
             config["FishOrchestrator:HealthCheckIntervalSeconds"] ?? "30");
         _logger = logger;
@@ -50,6 +47,7 @@ public class HealthMonitorService : BackgroundService
     {
         using var scope = _scopeFactory.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var ttsClient = scope.ServiceProvider.GetRequiredService<ITtsClientService>();
 
         var running = await context.ModelProfiles
             .FirstOrDefaultAsync(m => m.Status == ModelStatus.Running);
@@ -61,7 +59,7 @@ public class HealthMonitorService : BackgroundService
         }
 
         var baseUrl = $"http://localhost:{running.HostPort}";
-        var healthy = await _ttsClient.GetHealthAsync(baseUrl);
+        var healthy = await ttsClient.GetHealthAsync(baseUrl);
 
         if (healthy)
         {
