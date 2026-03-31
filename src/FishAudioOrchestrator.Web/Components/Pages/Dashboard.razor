@@ -128,29 +128,6 @@ else
     </div>
 }
 
-@* TTS Toast *@
-@if (_toast is not null)
-{
-    <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 1050;">
-        <div class="toast show @(_toast.Success ? "border-success" : "border-danger")" role="alert">
-            <div class="toast-header bg-dark text-light">
-                <strong class="me-auto">TTS @(_toast.Success ? "Complete" : "Failed")</strong>
-                <button type="button" class="btn-close btn-close-white" @onclick="() => _toast = null"></button>
-            </div>
-            <div class="toast-body bg-dark text-light">
-                @if (_toast.Success)
-                {
-                    <text>Generated in @_toast.DurationMs ms</text>
-                }
-                else
-                {
-                    <text>@_toast.Error</text>
-                }
-            </div>
-        </div>
-    </div>
-}
-
 @if (!string.IsNullOrEmpty(_error))
 {
     <div class="alert alert-danger mt-3">@_error</div>
@@ -169,7 +146,6 @@ else
     private string? _error;
     private bool _logExpanded;
     private List<string> _logLines = new();
-    private TtsNotificationEvent? _toast;
     private string? _subscribedContainerId;
     private readonly string _subscriberId = Guid.NewGuid().ToString();
 
@@ -185,7 +161,6 @@ else
         GpuState.OnChange += OnGpuChange;
 
         EventBus.OnContainerStatus += OnContainerStatusRaw;
-        EventBus.OnTtsNotification += OnTtsNotificationRaw;
         EventBus.OnLogLine += OnLogLineRaw;
 
         if (_activeModel?.ContainerId is not null)
@@ -231,27 +206,6 @@ else
 
         _activeModel = newActive;
         StateHasChanged();
-    }
-
-    private void OnTtsNotificationRaw(TtsNotificationEvent notification)
-    {
-        _ = InvokeAsync(() => OnTtsNotification(notification));
-    }
-
-    private void OnTtsNotification(TtsNotificationEvent notification)
-    {
-        _toast = notification;
-        StateHasChanged();
-
-        _ = Task.Run(async () =>
-        {
-            await Task.Delay(5000);
-            if (_toast == notification)
-            {
-                _toast = null;
-                await InvokeAsync(StateHasChanged);
-            }
-        });
     }
 
     private void OnLogLineRaw(LogLineEvent logLine)
@@ -343,7 +297,6 @@ else
     {
         GpuState.OnChange -= OnGpuChange;
         EventBus.OnContainerStatus -= OnContainerStatusRaw;
-        EventBus.OnTtsNotification -= OnTtsNotificationRaw;
         EventBus.OnLogLine -= OnLogLineRaw;
 
         if (_subscribedContainerId is not null)

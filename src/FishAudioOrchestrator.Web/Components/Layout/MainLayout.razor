@@ -1,7 +1,66 @@
 @inherits LayoutComponentBase
+@using FishAudioOrchestrator.Web.Hubs
+@using FishAudioOrchestrator.Web.Services
+@inject OrchestratorEventBus EventBus
+@implements IDisposable
 
 <NavMenu />
 
 <main class="container-fluid py-3">
     @Body
 </main>
+
+@if (_toast is not null)
+{
+    <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 1050;">
+        <div class="toast show @(_toast.Success ? "border-success" : "border-danger")" role="alert">
+            <div class="toast-header bg-dark text-light">
+                <strong class="me-auto">TTS @(_toast.Success ? "Complete" : "Failed")</strong>
+                <button type="button" class="btn-close btn-close-white" @onclick="() => _toast = null"></button>
+            </div>
+            <div class="toast-body bg-dark text-light">
+                @if (_toast.Success)
+                {
+                    <text>Generated in @_toast.DurationMs ms</text>
+                }
+                else
+                {
+                    <text>@_toast.Error</text>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private TtsNotificationEvent? _toast;
+
+    protected override void OnInitialized()
+    {
+        EventBus.OnTtsNotification += OnTtsNotificationRaw;
+    }
+
+    private void OnTtsNotificationRaw(TtsNotificationEvent notification)
+    {
+        _ = InvokeAsync(() =>
+        {
+            _toast = notification;
+            StateHasChanged();
+
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(5000);
+                if (_toast == notification)
+                {
+                    _toast = null;
+                    await InvokeAsync(StateHasChanged);
+                }
+            });
+        });
+    }
+
+    public void Dispose()
+    {
+        EventBus.OnTtsNotification -= OnTtsNotificationRaw;
+    }
+}
