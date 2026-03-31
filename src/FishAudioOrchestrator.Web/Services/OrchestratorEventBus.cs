@@ -20,4 +20,9 @@ public class OrchestratorEventBus
 
     public void RaiseGpuMetrics(GpuMetricsEvent metrics)
         => OnGpuMetrics?.Invoke(metrics);
+
+    public event Action<TtsJobStatusEvent>? OnTtsJobStatus;
+
+    public void RaiseTtsJobStatus(TtsJobStatusEvent evt)
+        => OnTtsJobStatus?.Invoke(evt);
 }

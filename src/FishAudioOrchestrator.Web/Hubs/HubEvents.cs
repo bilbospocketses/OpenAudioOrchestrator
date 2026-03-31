@@ -24,3 +24,8 @@ public record LogLineEvent(
     string ContainerId,
     DateTime Timestamp,
     string Line);
+
+public record TtsJobStatusEvent(
+    int JobId,
+    string Status,
+    string? ErrorMessage);
