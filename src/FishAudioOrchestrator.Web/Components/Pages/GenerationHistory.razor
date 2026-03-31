@@ -131,7 +131,7 @@ else
 
     private async Task DeleteEntry(GenerationLog log)
     {
-        var dataRoot = Config["FishOrchestrator:DataRoot"] ?? @"D:\DockerData\FishAudio";
+        var dataRoot = Config["FishOrchestrator:DataRoot"] ?? @"C:\MyFishAudioProj";
         var filePath = Path.Combine(dataRoot, "Output", log.OutputFileName);
 
         if (File.Exists(filePath))

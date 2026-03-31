@@ -155,7 +155,7 @@ app.UseMiddleware<SetupGuardMiddleware>();
 app.UseMiddleware<PostLoginRedirectMiddleware>();
 
 // Serve audio files from the data directories (after auth so only authenticated users can access)
-var dataRoot = app.Configuration["FishOrchestrator:DataRoot"] ?? @"D:\DockerData\FishAudio";
+var dataRoot = app.Configuration["FishOrchestrator:DataRoot"] ?? @"C:\MyFishAudioProj";
 
 var outputDir = Path.Combine(dataRoot, "Output");
 if (Directory.Exists(outputDir))

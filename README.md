@@ -80,9 +80,9 @@ Most settings are configured automatically by the setup wizard. For advanced use
 
 | Key | Description | Default |
 |-----|-------------|---------|
-| `ConnectionStrings:Default` | SQLite database path | `D:\DockerData\FishAudio\fishorch.db` |
+| `ConnectionStrings:Default` | SQLite database path | `C:\MyFishAudioProj\fishorch.db` |
 | `FishOrchestrator:DockerEndpoint` | Docker API endpoint | `npipe://./pipe/docker_engine` |
-| `FishOrchestrator:DataRoot` | Root directory for data files | `D:\DockerData\FishAudio` |
+| `FishOrchestrator:DataRoot` | Root directory for data files | `C:\MyFishAudioProj` |
 | `FishOrchestrator:PortRange:Start` | Start of container port range | `9001` |
 | `FishOrchestrator:PortRange:End` | End of container port range | `9099` |
 | `FishOrchestrator:DefaultImageTag` | Default Fish Speech Docker image | `fishaudio/fish-speech:server-cuda` |

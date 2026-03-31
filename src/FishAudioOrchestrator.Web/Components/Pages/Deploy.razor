@@ -112,7 +112,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        var dataRoot = Config["FishOrchestrator:DataRoot"] ?? @"D:\DockerData\FishAudio";
+        var dataRoot = Config["FishOrchestrator:DataRoot"] ?? @"C:\MyFishAudioProj";
         var defaultImage = Config["FishOrchestrator:DefaultImageTag"] ?? "fishaudio/fish-speech:server-cuda";
 
         _form.CheckpointPath = Path.Combine(dataRoot, "Checkpoints", "s2-pro");
