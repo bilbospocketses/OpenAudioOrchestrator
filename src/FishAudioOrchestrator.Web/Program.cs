@@ -90,8 +90,7 @@ builder.Services.AddScoped<IAdminSeedService, AdminSeedService>();
 
 // Health monitoring
 builder.Services.AddHostedService<HealthMonitorService>();
-builder.Services.AddSingleton<TtsJobProcessor>();
-builder.Services.AddHostedService<TtsJobProcessor>(sp => sp.GetRequiredService<TtsJobProcessor>());
+builder.Services.AddHostedService<TtsJobProcessor>();
 
 // SignalR
 builder.Services.AddSignalR();
