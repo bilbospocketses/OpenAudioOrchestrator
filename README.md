@@ -125,6 +125,11 @@ cd src/FishAudioOrchestrator.Web
 dotnet ef migrations add <MigrationName>
 ```
 
+## To Do
+
+- [ ] Create a containerized Docker version of the Blazor app (publish prebuilt image to Docker Hub)
+- [ ] Performance enhancements
+
 ## Attribution
 
 This product includes Fish Audio Materials developed by [Fish Audio](https://fish.audio). Copyright (c) 2026 Fish Audio. All Rights Reserved.
