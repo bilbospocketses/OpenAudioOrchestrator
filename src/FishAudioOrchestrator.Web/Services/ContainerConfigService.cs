@@ -28,14 +28,15 @@ public class ContainerConfigService : IContainerConfigService
             "COMPILE=0"
         };
 
-        if (profile.EnableHalf)
-        {
-            env.Add(@"FISH_API_SERVER_ARGS=[""--half""]");
-        }
-
         if (!string.IsNullOrWhiteSpace(profile.CudaAllocConf))
         {
             env.Add($"PYTORCH_CUDA_ALLOC_CONF={profile.CudaAllocConf}");
+        }
+
+        var cmd = new List<string>();
+        if (profile.EnableHalf)
+        {
+            cmd.Add("--half");
         }
 
         return new CreateContainerParameters
@@ -43,6 +44,7 @@ public class ContainerConfigService : IContainerConfigService
             Image = profile.ImageTag,
             Name = $"fish-orch-{profile.Name}",
             Env = env,
+            Cmd = cmd,
             ExposedPorts = new Dictionary<string, EmptyStruct>
             {
                 ["8080/tcp"] = default

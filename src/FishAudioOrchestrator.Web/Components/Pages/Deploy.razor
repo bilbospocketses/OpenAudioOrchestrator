@@ -87,7 +87,7 @@
         var dataRoot = Config["FishOrchestrator:DataRoot"] ?? @"D:\DockerData\FishAudio";
         var defaultImage = Config["FishOrchestrator:DefaultImageTag"] ?? "fishaudio/fish-speech:server-cuda";
 
-        _form.CheckpointPath = Path.Combine(dataRoot, "Checkpoints") + Path.DirectorySeparatorChar;
+        _form.CheckpointPath = Path.Combine(dataRoot, "Checkpoints", "s2-pro");
         _form.ImageTag = defaultImage;
 
         _activeModel = await Db.ModelProfiles
