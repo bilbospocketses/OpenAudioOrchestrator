@@ -42,7 +42,10 @@
 
     private void UpdateGpuInfo()
     {
-        _gpuInfo = $"GPU: {GpuState.MemoryUsedMb} / {GpuState.MemoryTotalMb} MB ({GpuState.UtilizationPercent}%)";
+        var memPercent = GpuState.MemoryTotalMb > 0
+            ? (int)(100.0 * GpuState.MemoryUsedMb / GpuState.MemoryTotalMb)
+            : 0;
+        _gpuInfo = $"Mem: {memPercent}%  Cores: {GpuState.UtilizationPercent}%";
         InvokeAsync(StateHasChanged);
     }
 

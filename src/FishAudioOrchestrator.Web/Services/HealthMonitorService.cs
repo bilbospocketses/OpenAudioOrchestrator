@@ -39,10 +39,38 @@ public class HealthMonitorService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // Run health checks and GPU metrics on separate intervals
+        var healthTask = RunHealthChecksAsync(stoppingToken);
+        var gpuTask = RunGpuMetricsAsync(stoppingToken);
+        await Task.WhenAll(healthTask, gpuTask);
+    }
+
+    private async Task RunHealthChecksAsync(CancellationToken stoppingToken)
+    {
         while (!stoppingToken.IsCancellationRequested)
         {
             await Task.Delay(TimeSpan.FromSeconds(_intervalSeconds), stoppingToken);
             await CheckHealthAsync();
+        }
+    }
+
+    private async Task RunGpuMetricsAsync(CancellationToken stoppingToken)
+    {
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+            await CollectGpuMetricsAsync();
+        }
+    }
+
+    private async Task CollectGpuMetricsAsync()
+    {
+        var gpuMetrics = await GpuMetricsParser.CollectAsync();
+        if (gpuMetrics is not null)
+        {
+            _gpuState.Update(gpuMetrics);
+            await _hub.Clients.All.SendAsync("ReceiveGpuMetrics", gpuMetrics);
+            _eventBus.RaiseGpuMetrics(gpuMetrics);
         }
     }
 
@@ -93,14 +121,5 @@ public class HealthMonitorService : BackgroundService
             m.Id, m.Name, m.Status.ToString(), m.HostPort, m.LastStartedAt)).ToList();
         await _hub.Clients.All.SendAsync("ReceiveContainerStatus", statusEvents);
         _eventBus.RaiseContainerStatus(statusEvents);
-
-        // Collect and push GPU metrics
-        var gpuMetrics = await GpuMetricsParser.CollectAsync();
-        if (gpuMetrics is not null)
-        {
-            _gpuState.Update(gpuMetrics);
-            await _hub.Clients.All.SendAsync("ReceiveGpuMetrics", gpuMetrics);
-            _eventBus.RaiseGpuMetrics(gpuMetrics);
-        }
     }
 }
