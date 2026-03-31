@@ -89,9 +89,8 @@
             _error = string.Join(" ", result.Errors.Select(e => e.Description));
     }
 
-    private async Task Logout()
+    private void Logout()
     {
-        await SignInManager.SignOutAsync();
-        Nav.NavigateTo("/login", forceLoad: true);
+        Nav.NavigateTo("/api/auth/signout", forceLoad: true);
     }
 }

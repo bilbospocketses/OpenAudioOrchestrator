@@ -194,4 +194,10 @@ app.MapGet("/api/auth/signin", async (string userId, string? returnUrl, SignInMa
     return Results.Redirect(returnUrl ?? "/");
 });
 
+app.MapGet("/api/auth/signout", async (SignInManager<AppUser> signInManager) =>
+{
+    await signInManager.SignOutAsync();
+    return Results.Redirect("/login");
+});
+
 app.Run();
