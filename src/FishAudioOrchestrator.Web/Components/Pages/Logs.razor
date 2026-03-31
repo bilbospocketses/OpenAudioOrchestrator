@@ -27,11 +27,12 @@
 
 @if (!string.IsNullOrEmpty(_selectedContainerId))
 {
+    <small class="text-muted d-block mb-1">Newest entries first</small>
     <div class="bg-dark border border-secondary rounded p-2"
          style="height: 70vh; overflow-y: auto; font-family: monospace; font-size: 0.85em;">
-        @foreach (var line in _logLines)
+        @for (var i = _logLines.Count - 1; i >= 0; i--)
         {
-            <div class="text-light">@line</div>
+            <div class="text-light">@_logLines[i]</div>
         }
         @if (_logLines.Count == 0)
         {

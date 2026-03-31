@@ -117,8 +117,8 @@ else
         @if (_logExpanded)
         {
             <div class="card-body p-0">
-                <pre class="bg-dark text-light p-2 mb-0" style="max-height: 250px; overflow-y: auto; font-size: 0.85em;">@foreach (var line in _logLines.TakeLast(10))
-{<text>@line
+                <pre class="bg-dark text-light p-2 mb-0" style="max-height: 250px; overflow-y: auto; font-size: 0.85em;">@for (var i = _logLines.Count - 1; i >= Math.Max(0, _logLines.Count - 10); i--)
+{<text>@_logLines[i]
 </text>}</pre>
             </div>
             <div class="card-footer py-1">
