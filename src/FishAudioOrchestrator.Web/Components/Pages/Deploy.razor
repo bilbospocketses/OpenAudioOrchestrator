@@ -179,7 +179,7 @@
 
     private void StartModelDownload()
     {
-        var checkpointsParent = Path.GetDirectoryName(_form.CheckpointPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)) ?? _form.CheckpointPath;
+        var checkpointsParent = Path.GetDirectoryName(_form.CheckpointPath?.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) ?? "") ?? _form.CheckpointPath ?? "";
         SetupSvc.StartModelDownload(checkpointsParent, () => InvokeAsync(StateHasChanged));
         _deployDownloadTimer = new Timer(_ => InvokeAsync(() =>
         {

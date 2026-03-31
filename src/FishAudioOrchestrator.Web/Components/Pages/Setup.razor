@@ -22,11 +22,6 @@
             {
                 <div class="alert alert-danger">@_error</div>
             }
-            @if (!string.IsNullOrEmpty(_success))
-            {
-                <div class="alert alert-success">@_success</div>
-            }
-
             @if (_step == 1)
             {
                 @* --- Step 1: Data Directories --- *@
@@ -331,7 +326,6 @@
 @code {
     private int _step = 1;
     private string? _error;
-    private string? _success;
     private string? _preCheckError;
     private bool _loading;
 
