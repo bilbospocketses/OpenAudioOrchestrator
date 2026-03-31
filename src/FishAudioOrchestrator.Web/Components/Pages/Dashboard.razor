@@ -49,7 +49,7 @@
                 Port @_activeModel.HostPort · FP16 @(_activeModel.EnableHalf ? "enabled" : "disabled")
                 @if (_activeModel.LastStartedAt.HasValue)
                 {
-                    <text> · Started @_activeModel.LastStartedAt.Value.ToString("g")</text>
+                    <text> · Started @_activeModel.LastStartedAt.Value.ToLocalTime().ToString("g")</text>
                 }
             </small>
         </div>

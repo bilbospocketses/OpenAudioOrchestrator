@@ -76,6 +76,7 @@ a:hover {
 .card-header {
     background-color: #0f3460;
     border-bottom-color: #333;
+    color: #e2e8f0;
 }
 
 .card-footer {
