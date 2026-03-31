@@ -89,10 +89,10 @@ builder.Services.AddScoped<IAdminSeedService, AdminSeedService>();
 builder.Services.AddHostedService<HealthMonitorService>();
 
 // SignalR
-builder.Services.AddHttpContextAccessor();
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<IContainerLogService, ContainerLogService>();
 builder.Services.AddSingleton<GpuMetricsState>();
+builder.Services.AddSingleton<OrchestratorEventBus>();
 
 var app = builder.Build();
 
