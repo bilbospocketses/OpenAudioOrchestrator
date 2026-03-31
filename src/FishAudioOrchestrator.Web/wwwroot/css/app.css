@@ -73,6 +73,11 @@ a:hover {
     border-color: #333;
 }
 
+.card .text-muted,
+.card .form-text {
+    color: #b0bec5 !important;
+}
+
 .card-header {
     background-color: #0f3460;
     border-bottom-color: #333;
