@@ -78,6 +78,8 @@ public class DockerOrchestratorService : IDockerOrchestratorService
     {
         if (profile.ContainerId is null) return;
 
+        await ThrowIfJobProcessingAsync();
+
         await _docker.Containers.StopContainerAsync(
             profile.ContainerId,
             new ContainerStopParameters { WaitBeforeKillSeconds = 30 });
@@ -112,6 +114,8 @@ public class DockerOrchestratorService : IDockerOrchestratorService
 
     public async Task SwapModelAsync(ModelProfile newModel)
     {
+        await ThrowIfJobProcessingAsync();
+
         var running = await _context.ModelProfiles
             .FirstOrDefaultAsync(m => m.Status == ModelStatus.Running);
 
@@ -121,6 +125,16 @@ public class DockerOrchestratorService : IDockerOrchestratorService
         }
 
         await CreateAndStartModelAsync(newModel);
+    }
+
+    private async Task ThrowIfJobProcessingAsync()
+    {
+        var hasActiveJob = await _context.TtsJobs
+            .AnyAsync(j => j.Status == TtsJobStatus.Processing);
+
+        if (hasActiveJob)
+            throw new InvalidOperationException(
+                "Cannot change models while a TTS job is processing. Wait for the job to finish or cancel it first.");
     }
 
     public async Task<string> GetContainerStatusAsync(string containerId)

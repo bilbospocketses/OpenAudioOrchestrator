@@ -83,14 +83,15 @@ else
                     <td>
                         @if (model.Status == ModelStatus.Running)
                         {
-                            <button class="btn btn-sm btn-danger" @onclick="() => RequestStop(model)">Stop</button>
+                            <button class="btn btn-sm btn-danger" @onclick="() => RequestStop(model)"
+                                    disabled="@_isJobProcessing" title="@(_isJobProcessing ? "A TTS job is processing" : "")">Stop</button>
                         }
                         else
                         {
                             <button class="btn btn-sm btn-success" @onclick="() => RequestStart(model)"
-                                    disabled="@_isOperating">Start</button>
+                                    disabled="@(_isOperating || _isJobProcessing)" title="@(_isJobProcessing ? "A TTS job is processing" : "")">Start</button>
                             <button class="btn btn-sm btn-danger ms-1" @onclick="() => RequestRemove(model)"
-                                    disabled="@_isOperating">Remove</button>
+                                    disabled="@(_isOperating || _isJobProcessing)" title="@(_isJobProcessing ? "A TTS job is processing" : "")">Remove</button>
                         }
                     </td>
                 </tr>
@@ -128,6 +129,7 @@ else
     private List<ModelProfile> _models = new();
     private ModelProfile? _activeModel;
     private bool _isOperating;
+    private bool _isJobProcessing;
     private string? _error;
     private List<string> _logLines = new();
     private string? _subscribedContainerId;
@@ -142,10 +144,12 @@ else
     protected override async Task OnInitializedAsync()
     {
         await LoadModels();
+        _isJobProcessing = await Db.TtsJobs.AnyAsync(j => j.Status == TtsJobStatus.Processing);
         GpuState.OnChange += OnGpuChange;
 
         EventBus.OnContainerStatus += OnContainerStatusRaw;
         EventBus.OnLogLine += OnLogLineRaw;
+        EventBus.OnTtsJobStatus += OnTtsJobStatusRaw;
 
         if (_activeModel?.ContainerId is not null)
         {
@@ -198,6 +202,15 @@ else
         {
             _logLines.Add($"[{logLine.Timestamp:HH:mm:ss}] {logLine.Line}");
             if (_logLines.Count > 100) _logLines.RemoveRange(0, _logLines.Count - 100);
+            StateHasChanged();
+        });
+    }
+
+    private void OnTtsJobStatusRaw(TtsJobStatusEvent evt)
+    {
+        _ = InvokeAsync(async () =>
+        {
+            _isJobProcessing = await Db.TtsJobs.AnyAsync(j => j.Status == TtsJobStatus.Processing);
             StateHasChanged();
         });
     }
@@ -282,6 +295,7 @@ else
         GpuState.OnChange -= OnGpuChange;
         EventBus.OnContainerStatus -= OnContainerStatusRaw;
         EventBus.OnLogLine -= OnLogLineRaw;
+        EventBus.OnTtsJobStatus -= OnTtsJobStatusRaw;
 
         if (_subscribedContainerId is not null)
         {
