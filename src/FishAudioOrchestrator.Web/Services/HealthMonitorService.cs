@@ -53,9 +53,9 @@ public class HealthMonitorService : BackgroundService
         var ttsClient = scope.ServiceProvider.GetRequiredService<ITtsClientService>();
 
         var running = await context.ModelProfiles
-            .FirstOrDefaultAsync(m => m.Status == ModelStatus.Running);
+            .FirstOrDefaultAsync(m => m.Status == ModelStatus.Running || m.Status == ModelStatus.Error);
 
-        if (running is null)
+        if (running is null || running.ContainerId is null)
         {
             _consecutiveFailures = 0;
             return;
