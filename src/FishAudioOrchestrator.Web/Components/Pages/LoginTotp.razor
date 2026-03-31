@@ -86,7 +86,6 @@
             return;
         }
 
-        await SignInManager.SignInAsync(_user, isPersistent: false);
-        Nav.NavigateTo("/", forceLoad: true);
+        Nav.NavigateTo($"/api/auth/signin?userId={_user.Id}", forceLoad: true);
     }
 }

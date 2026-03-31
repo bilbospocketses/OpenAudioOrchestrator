@@ -262,11 +262,12 @@
         await File.WriteAllBytesAsync(settingsPath, stream.ToArray());
     }
 
-    private async Task GoToDashboard()
+    private void GoToDashboard()
     {
         if (_createdUser is not null)
         {
-            await SignInManager.SignInAsync(_createdUser, isPersistent: false);
+            Nav.NavigateTo($"/api/auth/signin?userId={_createdUser.Id}", forceLoad: true);
+            return;
         }
         Nav.NavigateTo("/", forceLoad: true);
     }

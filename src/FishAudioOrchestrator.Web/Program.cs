@@ -182,4 +182,15 @@ app.MapRazorComponents<App>()
 
 app.MapHub<OrchestratorHub>("/hubs/orchestrator");
 
+// Cookie sign-in endpoint (Blazor Server can't set cookies after response starts)
+app.MapGet("/api/auth/signin", async (string userId, string? returnUrl, SignInManager<AppUser> signInManager, UserManager<AppUser> userManager, HttpContext httpContext) =>
+{
+    var user = await userManager.FindByIdAsync(userId);
+    if (user is null)
+        return Results.Redirect("/login");
+
+    await signInManager.SignInAsync(user, isPersistent: false);
+    return Results.Redirect(returnUrl ?? "/");
+});
+
 app.Run();
