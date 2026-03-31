@@ -64,7 +64,7 @@ public class TtsJobProcessor : BackgroundService
             if (File.Exists(filePath) && new FileInfo(filePath).Length > 0)
             {
                 _logger.LogInformation("Recovering completed job {JobId} — output file exists", job.Id);
-                await PromoteToGenerationLogAsync(db, job);
+                PromoteToGenerationLog(db, job);
             }
             else
             {
@@ -135,7 +135,7 @@ public class TtsJobProcessor : BackgroundService
         }
     }
 
-    private async Task PromoteToGenerationLogAsync(AppDbContext db, TtsJob job)
+    private void PromoteToGenerationLog(AppDbContext db, TtsJob job)
     {
         var log = new GenerationLog
         {
