@@ -110,6 +110,12 @@ public class ContainerLogService : IContainerLogService
         var stream = _streams.GetOrAdd(containerId, _ => new ContainerLogStream());
         lock (stream.Lock)
         {
+            // Replay recent lines to the new subscriber
+            foreach (var line in stream.RecentLines)
+            {
+                try { callback(line); } catch { }
+            }
+
             if (stream.ReaderTask is null || stream.ReaderTask.IsCompleted)
             {
                 stream.Cts = new CancellationTokenSource();
@@ -180,6 +186,11 @@ public class ContainerLogService : IContainerLogService
                 {
                     var logEvent = ParseLogLine(containerId, line);
 
+                    lock (logStream.Lock)
+                    {
+                        logStream.AddLine(logEvent);
+                    }
+
                     string[] subscribers;
                     lock (logStream.Lock)
                     {
@@ -229,7 +240,15 @@ public class ContainerLogService : IContainerLogService
     {
         public readonly object Lock = new();
         public readonly HashSet<string> Subscribers = new();
+        public readonly List<LogLineEvent> RecentLines = new();
         public CancellationTokenSource? Cts;
         public Task? ReaderTask;
+
+        public void AddLine(LogLineEvent line)
+        {
+            RecentLines.Add(line);
+            if (RecentLines.Count > 100)
+                RecentLines.RemoveRange(0, RecentLines.Count - 100);
+        }
     }
 }
