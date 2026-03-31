@@ -85,7 +85,7 @@ Most settings are configured automatically by the setup wizard. For advanced use
 | `FishOrchestrator:DataRoot` | Root directory for data files | `C:\MyFishAudioProj` |
 | `FishOrchestrator:PortRange:Start` | Start of container port range | `9001` |
 | `FishOrchestrator:PortRange:End` | End of container port range | `9099` |
-| `FishOrchestrator:DefaultImageTag` | Default Fish Speech Docker image | `fishaudio/fish-speech:server-cuda` |
+| `FishOrchestrator:DefaultImageTag` | Default Fish Speech Docker image | `fishaudio/fish-speech:server-cuda-v2.0.0-beta` |
 | `FishOrchestrator:DockerNetworkName` | Docker bridge network name | `fish-orchestrator` |
 | `FishOrchestrator:HealthCheckIntervalSeconds` | Health check frequency (seconds) | `30` |
 | `FishOrchestrator:Domain` | FQDN for Let's Encrypt (blank = localhost) | `""` |
