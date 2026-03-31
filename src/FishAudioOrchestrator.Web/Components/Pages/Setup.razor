@@ -10,12 +10,12 @@
 @inject SetupService SetupSvc
 @layout EmptyLayout
 
-<PageTitle>Setup — Fish Orchestrator</PageTitle>
+<PageTitle>Setup — Fish Audio Orchestrator</PageTitle>
 
 <div class="d-flex justify-content-center align-items-center min-vh-100 bg-dark py-4">
     <div class="card bg-dark text-light border-secondary" style="width: 600px;">
         <div class="card-body">
-            <h3 class="card-title text-center mb-2">Fish Orchestrator Setup</h3>
+            <h3 class="card-title text-center mb-2">Fish Audio Orchestrator Setup</h3>
             <p class="text-muted text-center mb-4">Step @_step of 7</p>
 
             @if (!string.IsNullOrEmpty(_error))
@@ -26,7 +26,7 @@
             {
                 @* --- Step 1: Data Directories --- *@
                 <h5>Data Storage</h5>
-                <p class="text-muted">Fish Orchestrator stores model checkpoints, reference voice samples, and generated audio files in separate directories. Choose where to store each. The directories will be created if they don't exist.</p>
+                <p class="text-muted">Fish Audio Orchestrator stores model checkpoints, reference voice samples, and generated audio files in separate directories. Choose where to store each. The directories will be created if they don't exist.</p>
 
                 <div class="mb-3">
                     <label class="form-label">Checkpoints Directory</label>
@@ -49,7 +49,7 @@
             {
                 @* --- Step 2: Model Download --- *@
                 <h5>Download Fish Speech Model</h5>
-                <p class="text-muted">Fish Orchestrator requires the Fish Audio s2-pro model. This is a large download (~11 GB) from HuggingFace. Git with Git LFS support must be installed.</p>
+                <p class="text-muted">Fish Audio Orchestrator requires the Fish Audio s2-pro model. This is a large download (~11 GB) from HuggingFace. Git with Git LFS support must be installed.</p>
 
                 @if (_modelAlreadyPresent)
                 {
@@ -106,7 +106,7 @@
             {
                 @* --- Step 3: Docker Image --- *@
                 <h5>Download Docker Image</h5>
-                <p class="text-muted">Fish Orchestrator runs the TTS model inside a Docker container. The required image is approximately 12 GB.</p>
+                <p class="text-muted">Fish Audio Orchestrator runs the TTS model inside a Docker container. The required image is approximately 12 GB.</p>
 
                 @if (_dockerImagePresent)
                 {
