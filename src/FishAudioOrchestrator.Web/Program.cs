@@ -183,8 +183,33 @@ app.MapRazorComponents<App>()
 
 app.MapHub<OrchestratorHub>("/hubs/orchestrator");
 
-// Cookie sign-in endpoint (Blazor Server can't set cookies after response starts)
-app.MapGet("/api/auth/signin", async (string userId, string? returnUrl, SignInManager<AppUser> signInManager, UserManager<AppUser> userManager, HttpContext httpContext) =>
+// Auth endpoints (Blazor Server can't set cookies after response starts)
+app.MapPost("/api/auth/login", async (HttpContext httpContext, SignInManager<AppUser> signInManager, UserManager<AppUser> userManager) =>
+{
+    var form = await httpContext.Request.ReadFormAsync();
+    var username = form["username"].ToString();
+    var password = form["password"].ToString();
+
+    var user = await userManager.FindByNameAsync(username);
+    if (user is null)
+        return Results.Redirect("/login?error=invalid");
+
+    var result = await signInManager.CheckPasswordSignInAsync(user, password, lockoutOnFailure: true);
+    if (!result.Succeeded)
+    {
+        var errorCode = result.IsLockedOut ? "locked" : "invalid";
+        return Results.Redirect($"/login?error={errorCode}");
+    }
+
+    var hasTwoFactor = await userManager.GetTwoFactorEnabledAsync(user);
+    if (hasTwoFactor)
+        return Results.Redirect($"/login/totp?uid={user.Id}");
+
+    await signInManager.SignInAsync(user, isPersistent: false);
+    return Results.Redirect("/");
+});
+
+app.MapGet("/api/auth/signin", async (string userId, string? returnUrl, SignInManager<AppUser> signInManager, UserManager<AppUser> userManager) =>
 {
     var user = await userManager.FindByIdAsync(userId);
     if (user is null)

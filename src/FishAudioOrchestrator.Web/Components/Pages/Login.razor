@@ -1,8 +1,4 @@
 @page "/login"
-@using Microsoft.AspNetCore.Identity
-@inject SignInManager<AppUser> SignInManager
-@inject UserManager<AppUser> UserManager
-@inject NavigationManager Nav
 @layout EmptyLayout
 
 <PageTitle>Login — Fish Orchestrator</PageTitle>
@@ -17,64 +13,34 @@
                 <div class="alert alert-danger">@_error</div>
             }
 
-            <EditForm Model="_model" OnValidSubmit="HandleLogin" FormName="login">
+            <form method="post" action="/api/auth/login">
                 <div class="mb-3">
                     <label class="form-label">Username</label>
-                    <InputText @bind-Value="_model.Username" class="form-control bg-dark text-light border-secondary" />
+                    <input name="username" class="form-control bg-dark text-light border-secondary" required />
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Password</label>
-                    <InputText @bind-Value="_model.Password" type="password" class="form-control bg-dark text-light border-secondary" />
+                    <input name="password" type="password" class="form-control bg-dark text-light border-secondary" required />
                 </div>
-                <button type="submit" class="btn btn-primary w-100" disabled="@_loading">
-                    @(_loading ? "Signing in..." : "Sign In")
-                </button>
-            </EditForm>
+                <button type="submit" class="btn btn-primary w-100">Sign In</button>
+            </form>
         </div>
     </div>
 </div>
 
 @code {
-    private LoginModel _model = new();
     private string? _error;
-    private bool _loading;
 
-    private sealed class LoginModel
+    [SupplyParameterFromQuery(Name = "error")]
+    private string? ErrorCode { get; set; }
+
+    protected override void OnInitialized()
     {
-        public string Username { get; set; } = "";
-        public string Password { get; set; } = "";
-    }
-
-    private async Task HandleLogin()
-    {
-        _error = null;
-        _loading = true;
-
-        var user = await UserManager.FindByNameAsync(_model.Username);
-        if (user is null)
+        _error = ErrorCode switch
         {
-            _error = "Invalid username or password.";
-            _loading = false;
-            return;
-        }
-
-        var result = await SignInManager.CheckPasswordSignInAsync(user, _model.Password, lockoutOnFailure: true);
-        if (!result.Succeeded)
-        {
-            _error = result.IsLockedOut
-                ? "Account locked. Try again later."
-                : "Invalid username or password.";
-            _loading = false;
-            return;
-        }
-
-        var hasTwoFactor = await UserManager.GetTwoFactorEnabledAsync(user);
-        if (hasTwoFactor)
-        {
-            Nav.NavigateTo($"/login/totp?uid={user.Id}", forceLoad: true);
-            return;
-        }
-
-        Nav.NavigateTo($"/api/auth/signin?userId={user.Id}", forceLoad: true);
+            "invalid" => "Invalid username or password.",
+            "locked" => "Account locked. Try again later.",
+            _ => null
+        };
     }
 }
