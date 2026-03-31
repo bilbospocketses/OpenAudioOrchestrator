@@ -6,7 +6,7 @@ A local Blazor Server dashboard for managing Fish Speech Docker containers with 
 
 ## Overview
 
-Fish Audio Orchestrator runs locally on Windows and manages [Fish Speech](https://github.com/fishaudio/fish-speech) Docker containers via Docker Desktop. It provides a web interface for deploying TTS models, managing a voice reference library, generating speech via a background job queue, and monitoring container health and GPU metrics in real time.
+Fish Audio Orchestrator runs locally on Windows (Linux testing and instructions coming soon...) and manages [Fish Speech](https://github.com/fishaudio/fish-speech) Docker containers via Docker Desktop. It provides a web interface for deploying TTS models, managing a voice reference library, generating speech via a background job queue, and monitoring container health and GPU metrics in real time.
 
 ## Features
 
