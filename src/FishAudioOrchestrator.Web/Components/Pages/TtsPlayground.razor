@@ -1,13 +1,15 @@
 @page "/playground"
 @attribute [Authorize]
-@inject ITtsClientService TtsClient
 @inject IVoiceLibraryService VoiceService
 @inject AppDbContext Db
 @using Microsoft.EntityFrameworkCore
 @using FishAudioOrchestrator.Web.Data
+@using FishAudioOrchestrator.Web.Data.Entities
 @using FishAudioOrchestrator.Web.Hubs
-@implements IAsyncDisposable
+@using Microsoft.AspNetCore.Identity
+@inject UserManager<AppUser> UserManager
 @inject OrchestratorEventBus EventBus
+@implements IAsyncDisposable
 
 <PageTitle>TTS Playground — Fish Orchestrator</PageTitle>
 
@@ -61,47 +63,88 @@ else
                         <div class="alert alert-danger">@_error</div>
                     }
 
-                    <button class="btn btn-primary w-100" @onclick="Generate" disabled="@_isGenerating">
-                        @if (_isGenerating)
-                        {
-                            <span class="spinner-border spinner-border-sm me-2"></span>
-                            <text>Generating...</text>
-                        }
-                        else
-                        {
-                            <text>Generate Speech</text>
-                        }
+                    <button class="btn btn-primary w-100" @onclick="SubmitJob">
+                        Submit to Queue
                     </button>
                 </div>
             </div>
-
-            @if (_lastResult is not null)
-            {
-                <div class="card mt-3">
-                    <div class="card-body">
-                        <h5 class="card-title">Result</h5>
-                        <p class="text-muted">Generated in @_lastResult.DurationMs ms</p>
-                        <audio controls class="w-100">
-                            <source src="/audio/output/@_lastResult.OutputFileName" />
-                        </audio>
-                        <a href="/audio/output/@_lastResult.OutputFileName" download
-                           class="btn btn-sm btn-outline-primary mt-2">Download</a>
-                    </div>
-                </div>
-            }
         </div>
     </div>
+}
+
+@if (_jobs.Count > 0)
+{
+    <h4 class="mt-4">Active Jobs</h4>
+    <table class="table table-hover">
+        <thead>
+            <tr>
+                <th>Status</th>
+                <th>Text</th>
+                <th>Format</th>
+                <th>Submitted</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var job in _jobs)
+            {
+                <tr>
+                    <td>
+                        @if (job.Status == TtsJobStatus.Processing)
+                        {
+                            <span class="badge bg-info">
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                                Processing
+                            </span>
+                        }
+                        else if (job.Status == TtsJobStatus.Queued)
+                        {
+                            <span class="badge bg-secondary">Queued</span>
+                        }
+                        else if (job.Status == TtsJobStatus.Failed)
+                        {
+                            <span class="badge bg-danger">Failed</span>
+                        }
+                    </td>
+                    <td><small class="text-muted">@Truncate(job.InputText, 60)</small></td>
+                    <td><code>@job.Format</code></td>
+                    <td><small>@job.CreatedAt.ToLocalTime().ToString("t")</small></td>
+                    <td>
+                        @if (job.Status == TtsJobStatus.Queued)
+                        {
+                            <button class="btn btn-sm btn-outline-warning" @onclick="() => CancelJob(job)">Cancel</button>
+                        }
+                        else if (job.Status == TtsJobStatus.Failed)
+                        {
+                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => RetryJob(job)">Retry</button>
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => DismissJob(job)">Dismiss</button>
+                        }
+                    </td>
+                </tr>
+                @if (job.Status == TtsJobStatus.Failed && !string.IsNullOrEmpty(job.ErrorMessage))
+                {
+                    <tr>
+                        <td colspan="5">
+                            <small class="text-danger">@job.ErrorMessage</small>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
 }
 
 @code {
     private ModelProfile? _activeModel;
     private List<ReferenceVoice> _voices = new();
+    private List<TtsJob> _jobs = new();
     private string _selectedVoiceId = "";
     private string _inputText = "";
     private string _format = "wav";
-    private bool _isGenerating;
     private string? _error;
-    private TtsResult? _lastResult;
+
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthState { get; set; } = null!;
 
     protected override async Task OnInitializedAsync()
     {
@@ -109,7 +152,17 @@ else
             .FirstOrDefaultAsync(m => m.Status == ModelStatus.Running);
         _voices = await VoiceService.ListVoicesAsync();
 
+        var state = await AuthState;
+        var user = await UserManager.GetUserAsync(state.User);
+        var userId = user?.Id;
+
+        _jobs = await Db.TtsJobs
+            .Where(j => j.UserId == userId && j.Status != TtsJobStatus.Completed)
+            .OrderBy(j => j.CreatedAt)
+            .ToListAsync();
+
         EventBus.OnContainerStatus += OnContainerStatusRaw;
+        EventBus.OnTtsJobStatus += OnTtsJobStatusRaw;
     }
 
     private void OnContainerStatusRaw(List<ContainerStatusEvent> events)
@@ -122,7 +175,7 @@ else
                 _activeModel = null;
                 StateHasChanged();
             }
-            else if (runningEvent is not null && _activeModel is not null && runningEvent.ModelId != _activeModel.Id)
+            else if (runningEvent is not null && (_activeModel is null || runningEvent.ModelId != _activeModel.Id))
             {
                 _activeModel = await Db.ModelProfiles.FirstOrDefaultAsync(m => m.Id == runningEvent.ModelId);
                 StateHasChanged();
@@ -130,13 +183,39 @@ else
         });
     }
 
+    private void OnTtsJobStatusRaw(TtsJobStatusEvent evt)
+    {
+        _ = InvokeAsync(() =>
+        {
+            var job = _jobs.FirstOrDefault(j => j.Id == evt.JobId);
+            if (job is null) return;
+
+            if (evt.Status == "Completed")
+            {
+                _jobs.Remove(job);
+            }
+            else if (evt.Status == "Failed")
+            {
+                job.Status = TtsJobStatus.Failed;
+                job.ErrorMessage = evt.ErrorMessage;
+            }
+            else if (evt.Status == "Processing")
+            {
+                job.Status = TtsJobStatus.Processing;
+            }
+
+            StateHasChanged();
+        });
+    }
+
     public ValueTask DisposeAsync()
     {
         EventBus.OnContainerStatus -= OnContainerStatusRaw;
+        EventBus.OnTtsJobStatus -= OnTtsJobStatusRaw;
         return ValueTask.CompletedTask;
     }
 
-    private async Task Generate()
+    private async Task SubmitJob()
     {
         if (string.IsNullOrWhiteSpace(_inputText))
         {
@@ -147,37 +226,59 @@ else
         if (_activeModel is null) return;
 
         _error = null;
-        _isGenerating = true;
-        _lastResult = null;
 
-        try
-        {
-            var request = new TtsRequest
-            {
-                Text = _inputText.Trim(),
-                ReferenceId = string.IsNullOrEmpty(_selectedVoiceId) ? null : _selectedVoiceId,
-                Format = _format
-            };
+        var state = await AuthState;
+        var user = await UserManager.GetUserAsync(state.User);
 
-            int? voiceDbId = null;
-            if (!string.IsNullOrEmpty(_selectedVoiceId))
-            {
-                var voice = await Db.ReferenceVoices
-                    .FirstOrDefaultAsync(v => v.VoiceId == _selectedVoiceId);
-                voiceDbId = voice?.Id;
-            }
+        int? voiceDbId = null;
+        if (!string.IsNullOrEmpty(_selectedVoiceId))
+        {
+            var voice = await Db.ReferenceVoices
+                .FirstOrDefaultAsync(v => v.VoiceId == _selectedVoiceId);
+            voiceDbId = voice?.Id;
+        }
 
-            var baseUrl = $"http://localhost:{_activeModel.HostPort}";
-            _lastResult = await TtsClient.GenerateAsync(baseUrl, request,
-                _activeModel.Id, voiceDbId);
-        }
-        catch (Exception ex)
+        var job = new TtsJob
         {
-            _error = $"Generation failed: {ex.Message}";
-        }
-        finally
-        {
-            _isGenerating = false;
-        }
+            UserId = user?.Id,
+            ModelProfileId = _activeModel.Id,
+            ReferenceVoiceId = voiceDbId,
+            InputText = _inputText.Trim(),
+            Format = _format,
+            ReferenceId = string.IsNullOrEmpty(_selectedVoiceId) ? null : _selectedVoiceId,
+            OutputFileName = TtsClientService.GenerateOutputFileName(_format)
+        };
+
+        Db.TtsJobs.Add(job);
+        await Db.SaveChangesAsync();
+
+        _jobs.Add(job);
+        _inputText = "";
     }
+
+    private async Task CancelJob(TtsJob job)
+    {
+        Db.TtsJobs.Remove(job);
+        await Db.SaveChangesAsync();
+        _jobs.Remove(job);
+    }
+
+    private async Task RetryJob(TtsJob job)
+    {
+        job.Status = TtsJobStatus.Queued;
+        job.ErrorMessage = null;
+        job.StartedAt = null;
+        job.CompletedAt = null;
+        await Db.SaveChangesAsync();
+    }
+
+    private async Task DismissJob(TtsJob job)
+    {
+        Db.TtsJobs.Remove(job);
+        await Db.SaveChangesAsync();
+        _jobs.Remove(job);
+    }
+
+    private static string Truncate(string text, int maxLength) =>
+        text.Length <= maxLength ? text : text[..maxLength] + "...";
 }
