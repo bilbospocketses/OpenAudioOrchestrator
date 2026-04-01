@@ -23,8 +23,8 @@
             {
                 <div class="flex-grow-1 me-3">
                     <div class="progress" style="height: 20px;">
-                        <div class="progress-bar bg-info" role="progressbar"
-                             style="width: @((int)(100.0 * GpuState.MemoryUsedMb / GpuState.MemoryTotalMb))%">
+                        <div class="progress-bar" role="progressbar"
+                             style="background-color: #2563eb; width: @((int)(100.0 * GpuState.MemoryUsedMb / GpuState.MemoryTotalMb))%">
                             @GpuState.MemoryUsedMb / @GpuState.MemoryTotalMb MB
                         </div>
                     </div>
