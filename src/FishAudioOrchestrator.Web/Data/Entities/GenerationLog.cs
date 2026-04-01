@@ -10,7 +10,7 @@ public class GenerationLog
     public required string OutputFileName { get; set; }
     public required string Format { get; set; }
     public long DurationMs { get; set; }
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public ModelProfile ModelProfile { get; set; } = null!;
     public ReferenceVoice? ReferenceVoice { get; set; }

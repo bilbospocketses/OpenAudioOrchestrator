@@ -1,8 +1,11 @@
 @page "/login/totp"
 @using Microsoft.AspNetCore.Identity
+@using Microsoft.Extensions.Caching.Memory
+@using System.Security.Cryptography
 @inject SignInManager<AppUser> SignInManager
 @inject UserManager<AppUser> UserManager
 @inject NavigationManager Nav
+@inject IMemoryCache Cache
 @layout EmptyLayout
 
 <PageTitle>Verify TOTP — Fish Audio Orchestrator</PageTitle>
@@ -41,9 +44,10 @@
     private string? _error;
     private bool _loading;
     private AppUser? _user;
+    private string? _pendingToken;
 
-    [SupplyParameterFromQuery(Name = "uid")]
-    private string? UserId { get; set; }
+    [SupplyParameterFromQuery(Name = "tid")]
+    private string? TokenId { get; set; }
 
     private sealed class TotpModel
     {
@@ -52,13 +56,22 @@
 
     protected override async Task OnInitializedAsync()
     {
-        if (string.IsNullOrEmpty(UserId))
+        if (string.IsNullOrEmpty(TokenId))
         {
             Nav.NavigateTo("/login", forceLoad: true);
             return;
         }
 
-        _user = await UserManager.FindByIdAsync(UserId);
+        _pendingToken = TokenId;
+
+        // Resolve user from opaque token (don't remove yet — TOTP verification hasn't happened)
+        if (!Cache.TryGetValue($"totp-pending:{_pendingToken}", out string? userId) || userId is null)
+        {
+            Nav.NavigateTo("/login", forceLoad: true);
+            return;
+        }
+
+        _user = await UserManager.FindByIdAsync(userId);
         if (_user is null)
         {
             Nav.NavigateTo("/login", forceLoad: true);
@@ -86,6 +99,14 @@
             return;
         }
 
-        Nav.NavigateTo($"/api/auth/signin?userId={_user.Id}", forceLoad: true);
+        // Consume the pending token
+        if (_pendingToken is not null)
+            Cache.Remove($"totp-pending:{_pendingToken}");
+
+        // Generate a one-time token proving TOTP was verified
+        var token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+        Cache.Set($"totp-verified:{token}", _user.Id, TimeSpan.FromSeconds(60));
+
+        Nav.NavigateTo($"/api/auth/signin?token={Uri.EscapeDataString(token)}", forceLoad: true);
     }
 }

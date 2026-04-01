@@ -21,8 +21,9 @@ Fish Audio Orchestrator runs locally on Windows (Linux testing and instructions 
 - **Real-time dashboard** — live container status, GPU memory/core utilization (5-second refresh), and latest model output
 - **Container log streaming** — live Docker log viewer with backfill, per-container subscription, newest-first ordering
 - **Generation history** — log of all TTS generations with playback, download, and delete; updates dynamically when jobs complete
-- **Authentication** — ASP.NET Identity with mandatory TOTP/MFA
+- **Authentication** — ASP.NET Identity with mandatory TOTP/MFA, cryptographic one-time sign-in tokens, rate-limited login (10 req/min per IP)
 - **Role-based access control** — Admin (full access) and User (TTS, voice browsing, own history)
+- **Authenticated file serving** — audio output and reference files served through authorized endpoints with path traversal protection
 - **First-run setup wizard** — 7-step guided installer covering data directories, model download, Docker image pull, server configuration, admin account creation, and TOTP enrollment
 - **HTTPS** — optional automatic certificate provisioning via Let's Encrypt (ports 80/443)
 - **API gateway** — YARP reverse proxy for the Fish Speech TTS API
@@ -110,7 +111,7 @@ For automated deployments, set `FishOrchestrator__AdminUser` and `FishOrchestrat
 - **OrchestratorEventBus** — singleton in-process event bus for real-time UI updates (replaces client-side SignalR hub connections)
 - **YARP** — reverse proxy routing to the active Fish Speech container
 - **SignalR** — hub retained for future external client support (authorized)
-- **ASP.NET Identity** — authentication with mandatory TOTP/MFA; cookie operations via API endpoints for Blazor Server compatibility
+- **ASP.NET Identity** — authentication with mandatory TOTP/MFA; cookie operations via API endpoints for Blazor Server compatibility; rate-limited login; cryptographic TOTP verification tokens
 - **LettuceEncrypt** — automatic Let's Encrypt HTTPS on ports 80/443 (optional, enabled when Domain is configured)
 
 Design specifications are in [`docs/superpowers/specs/`](docs/superpowers/specs/).

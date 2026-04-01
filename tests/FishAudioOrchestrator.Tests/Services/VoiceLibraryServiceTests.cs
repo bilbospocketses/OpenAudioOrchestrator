@@ -3,6 +3,7 @@ using FishAudioOrchestrator.Web.Data.Entities;
 using FishAudioOrchestrator.Web.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Moq;
 
 namespace FishAudioOrchestrator.Tests.Services;
 
@@ -30,7 +31,9 @@ public class VoiceLibraryServiceTests : IDisposable
             })
             .Build();
 
-        _service = new VoiceLibraryService(config, _context);
+        var httpFactory = new Mock<IHttpClientFactory>();
+        httpFactory.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(new HttpClient());
+        _service = new VoiceLibraryService(config, _context, httpFactory.Object);
     }
 
     public void Dispose()

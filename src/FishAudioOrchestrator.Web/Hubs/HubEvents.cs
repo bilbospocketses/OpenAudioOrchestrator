@@ -5,7 +5,7 @@ public record ContainerStatusEvent(
     string Name,
     string Status,
     int HostPort,
-    DateTime? LastStartedAt);
+    DateTimeOffset? LastStartedAt);
 
 public record GpuMetricsEvent(
     int MemoryUsedMb,
@@ -22,7 +22,7 @@ public record TtsNotificationEvent(
 
 public record LogLineEvent(
     string ContainerId,
-    DateTime Timestamp,
+    DateTimeOffset Timestamp,
     string Line);
 
 public record TtsJobStatusEvent(

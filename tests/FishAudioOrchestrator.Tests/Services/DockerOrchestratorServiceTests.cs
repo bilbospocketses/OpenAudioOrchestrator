@@ -96,7 +96,7 @@ public class DockerOrchestratorServiceTests
         context.ModelProfiles.Add(profile);
         await context.SaveChangesAsync();
 
-        var service = new DockerOrchestratorService(mockDocker.Object, mockConfig.Object, context, mockProxy.Object, mockNetwork.Object, CreateHubMock().Object);
+        var service = new DockerOrchestratorService(mockDocker.Object, mockConfig.Object, context, mockProxy.Object, mockNetwork.Object, CreateHubMock().Object, new OrchestratorEventBus());
         await service.CreateAndStartModelAsync(profile);
 
         Assert.Equal("abc123", profile.ContainerId);
@@ -122,7 +122,7 @@ public class DockerOrchestratorServiceTests
         context.ModelProfiles.Add(profile);
         await context.SaveChangesAsync();
 
-        var service = new DockerOrchestratorService(mockDocker.Object, mockConfig.Object, context, mockProxy.Object, mockNetwork.Object, CreateHubMock().Object);
+        var service = new DockerOrchestratorService(mockDocker.Object, mockConfig.Object, context, mockProxy.Object, mockNetwork.Object, CreateHubMock().Object, new OrchestratorEventBus());
         await service.StopModelAsync(profile);
 
         Assert.Equal(ModelStatus.Stopped, profile.Status);
@@ -149,7 +149,7 @@ public class DockerOrchestratorServiceTests
         context.ModelProfiles.Add(profile);
         await context.SaveChangesAsync();
 
-        var service = new DockerOrchestratorService(mockDocker.Object, mockConfig.Object, context, mockProxy.Object, mockNetwork.Object, CreateHubMock().Object);
+        var service = new DockerOrchestratorService(mockDocker.Object, mockConfig.Object, context, mockProxy.Object, mockNetwork.Object, CreateHubMock().Object, new OrchestratorEventBus());
         await service.RemoveModelAsync(profile);
 
         Assert.Null(profile.ContainerId);
@@ -185,7 +185,7 @@ public class DockerOrchestratorServiceTests
         context.ModelProfiles.AddRange(running, newModel);
         await context.SaveChangesAsync();
 
-        var service = new DockerOrchestratorService(mockDocker.Object, mockConfig.Object, context, mockProxy.Object, mockNetwork.Object, CreateHubMock().Object);
+        var service = new DockerOrchestratorService(mockDocker.Object, mockConfig.Object, context, mockProxy.Object, mockNetwork.Object, CreateHubMock().Object, new OrchestratorEventBus());
         await service.SwapModelAsync(newModel);
 
         Assert.Equal(ModelStatus.Stopped, running.Status);
@@ -202,7 +202,7 @@ public class DockerOrchestratorServiceTests
         var mockProxy = new Mock<FishProxyConfigProvider>();
         var mockNetwork = new Mock<IDockerNetworkService>();
 
-        var service = new DockerOrchestratorService(mockDocker.Object, mockConfig.Object, context, mockProxy.Object, mockNetwork.Object, CreateHubMock().Object);
+        var service = new DockerOrchestratorService(mockDocker.Object, mockConfig.Object, context, mockProxy.Object, mockNetwork.Object, CreateHubMock().Object, new OrchestratorEventBus());
         var status = await service.GetContainerStatusAsync("abc123");
 
         Assert.Equal("running", status);
@@ -234,7 +234,7 @@ public class DockerOrchestratorServiceTests
         await context.SaveChangesAsync();
 
         var service = new DockerOrchestratorService(
-            mockDocker.Object, mockConfig.Object, context, mockProxy.Object, mockNetwork.Object, CreateHubMock().Object);
+            mockDocker.Object, mockConfig.Object, context, mockProxy.Object, mockNetwork.Object, CreateHubMock().Object, new OrchestratorEventBus());
 
         await service.CreateAndStartModelAsync(profile);
 
@@ -264,7 +264,7 @@ public class DockerOrchestratorServiceTests
         await context.SaveChangesAsync();
 
         var service = new DockerOrchestratorService(
-            mockDocker.Object, mockConfig.Object, context, mockProxy.Object, mockNetwork.Object, CreateHubMock().Object);
+            mockDocker.Object, mockConfig.Object, context, mockProxy.Object, mockNetwork.Object, CreateHubMock().Object, new OrchestratorEventBus());
 
         await service.StopModelAsync(profile);
 

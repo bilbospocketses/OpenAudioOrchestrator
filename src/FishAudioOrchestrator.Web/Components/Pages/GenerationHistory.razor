@@ -1,6 +1,6 @@
 @page "/history"
 @attribute [Authorize]
-@inject AppDbContext Db
+@inject IDbContextFactory<AppDbContext> DbFactory
 @using Microsoft.EntityFrameworkCore
 @using FishAudioOrchestrator.Web.Data
 @using Microsoft.AspNetCore.Identity
@@ -84,7 +84,8 @@ else
         var user = await UserManager.GetUserAsync(state.User);
         var isAdmin = state.User.IsInRole("Admin");
 
-        IQueryable<GenerationLog> query = Db.GenerationLogs
+        await using var db = await DbFactory.CreateDbContextAsync();
+        IQueryable<GenerationLog> query = db.GenerationLogs
             .Include(l => l.ModelProfile)
             .Include(l => l.ReferenceVoice);
 
@@ -104,7 +105,8 @@ else
 
         _ = InvokeAsync(async () =>
         {
-            var newLog = await Db.GenerationLogs
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var newLog = await db.GenerationLogs
                 .Include(l => l.ModelProfile)
                 .Include(l => l.ReferenceVoice)
                 .FirstOrDefaultAsync(l => l.OutputFileName == notification.OutputFileName);
@@ -139,11 +141,10 @@ else
             File.Delete(filePath);
         }
 
-        Db.GenerationLogs.Remove(log);
-        await Db.SaveChangesAsync();
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.GenerationLogs.Remove(log);
+        await db.SaveChangesAsync();
         _logs.Remove(log);
     }
 
-    private static string Truncate(string text, int maxLength) =>
-        text.Length <= maxLength ? text : text[..maxLength] + "...";
 }

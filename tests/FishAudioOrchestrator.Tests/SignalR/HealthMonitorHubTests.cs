@@ -1,3 +1,4 @@
+using Docker.DotNet;
 using FishAudioOrchestrator.Web.Data;
 using FishAudioOrchestrator.Web.Data.Entities;
 using FishAudioOrchestrator.Web.Hubs;
@@ -33,11 +34,12 @@ public class HealthMonitorHubTests
             .Build();
     }
 
-    private static IServiceScopeFactory CreateScopeFactory(AppDbContext context)
+    private static IServiceScopeFactory CreateScopeFactory(AppDbContext context, ITtsClientService ttsClient)
     {
         var mockScope = new Mock<IServiceScope>();
         var mockProvider = new Mock<IServiceProvider>();
         mockProvider.Setup(p => p.GetService(typeof(AppDbContext))).Returns(context);
+        mockProvider.Setup(p => p.GetService(typeof(ITtsClientService))).Returns(ttsClient);
         mockScope.Setup(s => s.ServiceProvider).Returns(mockProvider.Object);
         var mockFactory = new Mock<IServiceScopeFactory>();
         mockFactory.Setup(f => f.CreateScope()).Returns(mockScope.Object);
@@ -63,6 +65,8 @@ public class HealthMonitorHubTests
         var mockTts = new Mock<ITtsClientService>();
         mockTts.Setup(t => t.GetHealthAsync(It.IsAny<string>())).ReturnsAsync(true);
 
+        var mockDocker = new Mock<IDockerClient>();
+
         var mockHub = new Mock<IHubContext<OrchestratorHub>>();
         var mockClients = new Mock<IHubClients>();
         var mockAll = new Mock<IClientProxy>();
@@ -72,8 +76,8 @@ public class HealthMonitorHubTests
         var gpuState = new GpuMetricsState();
 
         var service = new HealthMonitorService(
-            CreateScopeFactory(context), mockTts.Object, CreateConfig(),
-            NullLogger<HealthMonitorService>.Instance, mockHub.Object, gpuState);
+            CreateScopeFactory(context, mockTts.Object), mockDocker.Object, CreateConfig(),
+            NullLogger<HealthMonitorService>.Instance, mockHub.Object, gpuState, new OrchestratorEventBus());
 
         await service.CheckHealthAsync();
 

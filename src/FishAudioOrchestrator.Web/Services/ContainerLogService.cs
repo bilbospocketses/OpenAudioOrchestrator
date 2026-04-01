@@ -227,13 +227,13 @@ public class ContainerLogService : IContainerLogService
         if (trimmed.Length > 30 && trimmed[4] == '-' && trimmed[10] == 'T')
         {
             var spaceIdx = trimmed.IndexOf(' ');
-            if (spaceIdx > 0 && DateTime.TryParse(trimmed[..spaceIdx], out var ts))
+            if (spaceIdx > 0 && DateTimeOffset.TryParse(trimmed[..spaceIdx], out var ts))
             {
                 return new LogLineEvent(containerId, ts, trimmed[(spaceIdx + 1)..]);
             }
         }
 
-        return new LogLineEvent(containerId, DateTime.UtcNow, trimmed);
+        return new LogLineEvent(containerId, DateTimeOffset.UtcNow, trimmed);
     }
 
     private class ContainerLogStream

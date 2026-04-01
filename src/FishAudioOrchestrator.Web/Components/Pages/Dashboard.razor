@@ -1,6 +1,6 @@
 @page "/"
 @attribute [Authorize]
-@inject AppDbContext Db
+@inject IDbContextFactory<AppDbContext> DbFactory
 @inject IDockerOrchestratorService Orchestrator
 @inject GpuMetricsState GpuState
 @using Microsoft.EntityFrameworkCore
@@ -144,7 +144,10 @@ else
     protected override async Task OnInitializedAsync()
     {
         await LoadModels();
-        _isJobProcessing = await Db.TtsJobs.AnyAsync(j => j.Status == TtsJobStatus.Processing);
+        await using (var db = await DbFactory.CreateDbContextAsync())
+        {
+            _isJobProcessing = await db.TtsJobs.AnyAsync(j => j.Status == TtsJobStatus.Processing);
+        }
         GpuState.OnChange += OnGpuChange;
 
         EventBus.OnContainerStatus += OnContainerStatusRaw;
@@ -210,7 +213,8 @@ else
     {
         _ = InvokeAsync(async () =>
         {
-            _isJobProcessing = await Db.TtsJobs.AnyAsync(j => j.Status == TtsJobStatus.Processing);
+            await using var db = await DbFactory.CreateDbContextAsync();
+            _isJobProcessing = await db.TtsJobs.AnyAsync(j => j.Status == TtsJobStatus.Processing);
             StateHasChanged();
         });
     }
@@ -222,7 +226,8 @@ else
 
     private async Task LoadModels()
     {
-        _models = await Db.ModelProfiles
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _models = await db.ModelProfiles
             .OrderByDescending(m => m.Status == ModelStatus.Running)
             .ThenBy(m => m.Name)
             .ToListAsync();
@@ -283,8 +288,9 @@ else
         try
         {
             await Orchestrator.RemoveModelAsync(model);
-            Db.ModelProfiles.Remove(model);
-            await Db.SaveChangesAsync();
+            await using var db = await DbFactory.CreateDbContextAsync();
+            db.ModelProfiles.Remove(model);
+            await db.SaveChangesAsync();
         }
         catch (Exception ex) { _error = $"Failed to remove model: {ex.Message}"; }
         finally { _isOperating = false; }

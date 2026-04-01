@@ -323,6 +323,8 @@
     </div>
 </div>
 
+@implements IAsyncDisposable
+
 @code {
     private int _step = 1;
     private string? _error;
@@ -630,5 +632,13 @@
                 StateHasChanged();
             }), null, 2000, 3000);
         }
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        _downloadTimer?.Dispose();
+        _pullTimer?.Dispose();
+        _completionTimer?.Dispose();
+        return ValueTask.CompletedTask;
     }
 }

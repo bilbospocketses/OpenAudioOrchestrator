@@ -102,7 +102,7 @@ public class TtsClientServiceTests : IDisposable
         _context.ModelProfiles.Add(model);
         await _context.SaveChangesAsync();
 
-        var service = new TtsClientService(new HttpClient(), CreateConfig(), _context, CreateHubMock().Object);
+        var service = new TtsClientService(new HttpClient(), CreateConfig(), _context, CreateHubMock().Object, new OrchestratorEventBus());
 
         var log = await service.SaveGenerationLogAsync(
             modelProfileId: model.Id, referenceVoiceId: null,

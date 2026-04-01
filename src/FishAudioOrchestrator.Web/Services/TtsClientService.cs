@@ -20,7 +20,7 @@ public class TtsClientService : ITtsClientService
     public TtsClientService(HttpClient httpClient, IConfiguration config, AppDbContext context, IHubContext<OrchestratorHub> hub, OrchestratorEventBus eventBus)
     {
         _httpClient = httpClient;
-        var dataRoot = config["FishOrchestrator:DataRoot"]!;
+        var dataRoot = config["FishOrchestrator:DataRoot"] ?? @"C:\MyFishAudioProj";
         _outputPath = Path.Combine(dataRoot, "Output");
         _context = context;
         _hub = hub;

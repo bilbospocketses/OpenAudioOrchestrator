@@ -8,6 +8,6 @@ public class ReferenceVoice
     public required string AudioFileName { get; set; }
     public required string TranscriptText { get; set; }
     public string? Tags { get; set; }
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    public DateTime? UpdatedAt { get; set; }
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? UpdatedAt { get; set; }
 }

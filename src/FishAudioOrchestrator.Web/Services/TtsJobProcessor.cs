@@ -103,7 +103,7 @@ public class TtsJobProcessor : BackgroundService
 
         // Mark as processing
         job.Status = TtsJobStatus.Processing;
-        job.StartedAt = DateTime.UtcNow;
+        job.StartedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(CancellationToken.None);
         _eventBus.RaiseTtsJobStatus(new TtsJobStatusEvent(job.Id, "Processing", null));
 
@@ -153,15 +153,18 @@ public class TtsJobProcessor : BackgroundService
                 CreateNoWindow = true
             };
 
-            var process = Process.Start(psi);
+            using var process = Process.Start(psi);
             if (process is null)
             {
                 await FailJob(db, job, "Failed to start docker exec process");
                 return;
             }
 
+            // Start reading stderr immediately to prevent pipe buffer deadlock
+            var stderrTask = process.StandardError.ReadToEndAsync();
+
             // Poll for completion: check file, job status (for cancel), and timeout
-            await PollForOutputFileAsync(db, job, stoppingToken, process);
+            await PollForOutputFileAsync(db, job, stoppingToken, process, stderrTask);
         }
         catch (Exception ex)
         {
@@ -176,14 +179,21 @@ public class TtsJobProcessor : BackgroundService
     }
 
     private async Task PollForOutputFileAsync(AppDbContext db, TtsJob job,
-        CancellationToken stoppingToken, Process? process = null)
+        CancellationToken stoppingToken, Process? process = null, Task<string>? stderrTask = null)
     {
         var filePath = Path.Combine(_outputPath, job.OutputFileName);
-        var startTime = job.StartedAt ?? DateTime.UtcNow;
+        var startTime = job.StartedAt ?? DateTimeOffset.UtcNow;
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            await Task.Delay(PollInterval, CancellationToken.None);
+            try
+            {
+                await Task.Delay(PollInterval, stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                return;
+            }
 
             // Check if docker exec process exited (success or error)
             if (process is not null && process.HasExited)
@@ -196,7 +206,7 @@ public class TtsJobProcessor : BackgroundService
                         // Valid audio file (error responses are typically < 200 bytes)
                         _logger.LogInformation("Job {JobId} completed — output file found ({Size} bytes)", job.Id, fileSize);
                         await Task.Delay(1000, CancellationToken.None);
-                        var duration = (long)(DateTime.UtcNow - startTime).TotalMilliseconds;
+                        var duration = (long)(DateTimeOffset.UtcNow - startTime).TotalMilliseconds;
                         PromoteToGenerationLog(db, job, duration);
                         await db.SaveChangesAsync(CancellationToken.None);
                         return;
@@ -213,7 +223,7 @@ public class TtsJobProcessor : BackgroundService
                 }
                 else
                 {
-                    var stderr = await process.StandardError.ReadToEndAsync();
+                    var stderr = stderrTask is not null ? await stderrTask : "";
                     _logger.LogError("docker exec failed for job {JobId}: {Error}", job.Id, stderr);
                     await FailJob(db, job, $"docker exec failed: {stderr}");
                     return;
@@ -225,7 +235,7 @@ public class TtsJobProcessor : BackgroundService
             {
                 _logger.LogInformation("Job {JobId} completed — output file found during recovery", job.Id);
                 await Task.Delay(1000, CancellationToken.None);
-                var duration = (long)(DateTime.UtcNow - startTime).TotalMilliseconds;
+                var duration = (long)(DateTimeOffset.UtcNow - startTime).TotalMilliseconds;
                 PromoteToGenerationLog(db, job, duration);
                 await db.SaveChangesAsync(CancellationToken.None);
                 return;
@@ -248,7 +258,7 @@ public class TtsJobProcessor : BackgroundService
             }
 
             // Check timeout
-            if (DateTime.UtcNow - startTime > JobTimeout)
+            if (DateTimeOffset.UtcNow - startTime > JobTimeout)
             {
                 _logger.LogWarning("Job {JobId} timed out after {Hours} hours", job.Id, JobTimeout.TotalHours);
                 if (process is not null && !process.HasExited)
@@ -291,7 +301,7 @@ public class TtsJobProcessor : BackgroundService
 
         job.Status = TtsJobStatus.Failed;
         job.ErrorMessage = "Cancelled by user";
-        job.CompletedAt = DateTime.UtcNow;
+        job.CompletedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(CancellationToken.None);
         _eventBus.RaiseTtsJobStatus(new TtsJobStatusEvent(job.Id, "Failed", job.ErrorMessage));
     }
@@ -302,7 +312,7 @@ public class TtsJobProcessor : BackgroundService
         {
             job.Status = TtsJobStatus.Failed;
             job.ErrorMessage = error;
-            job.CompletedAt = DateTime.UtcNow;
+            job.CompletedAt = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync(CancellationToken.None);
             _eventBus.RaiseTtsJobStatus(new TtsJobStatusEvent(job.Id, "Failed", error));
         }
@@ -353,7 +363,7 @@ public class TtsJobProcessor : BackgroundService
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
-            var process = Process.Start(psi);
+            using var process = Process.Start(psi);
             if (process is null) return false;
             await process.WaitForExitAsync();
             return process.ExitCode == 0;
@@ -376,7 +386,7 @@ public class TtsJobProcessor : BackgroundService
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
-            var process = Process.Start(psi);
+            using var process = Process.Start(psi);
             if (process is not null)
                 await process.WaitForExitAsync();
         }

@@ -27,6 +27,7 @@ public class FishProxyConfigProvider : IProxyConfigProvider
 
         _config = new FishProxyConfig(destinations, _cts.Token);
         oldCts.Cancel();
+        oldCts.Dispose();
     }
 
     public virtual void ClearDestination()
@@ -35,6 +36,7 @@ public class FishProxyConfigProvider : IProxyConfigProvider
         _cts = new CancellationTokenSource();
         _config = new FishProxyConfig(null, _cts.Token);
         oldCts.Cancel();
+        oldCts.Dispose();
     }
 
     private class FishProxyConfig : IProxyConfig

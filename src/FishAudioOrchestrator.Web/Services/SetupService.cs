@@ -258,6 +258,7 @@ public class SetupService
         {
             onExit?.Invoke(process.ExitCode);
             onOutput?.Invoke();
+            process.Dispose();
         };
 
         process.Start();

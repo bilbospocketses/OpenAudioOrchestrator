@@ -8,8 +8,10 @@ using FishAudioOrchestrator.Web.Proxy;
 using FishAudioOrchestrator.Web.Services;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using System.Net;
-using Microsoft.Extensions.FileProviders;
+using System.Security.Cryptography;
+using System.Threading.RateLimiting;
 using Yarp.ReverseProxy.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -33,8 +35,25 @@ if (!string.IsNullOrWhiteSpace(domain))
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
+// Rate limiting for auth endpoints
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddPolicy("auth", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            }));
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+});
+
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("Default")));
+builder.Services.AddDbContextFactory<AppDbContext>(options =>
+    options.UseSqlite(builder.Configuration.GetConnectionString("Default")), ServiceLifetime.Scoped);
 
 // ASP.NET Identity
 builder.Services.AddIdentity<AppUser, IdentityRole>(opts =>
@@ -98,6 +117,7 @@ builder.Services.AddSingleton<IContainerLogService, ContainerLogService>();
 builder.Services.AddSingleton<GpuMetricsState>();
 builder.Services.AddSingleton<OrchestratorEventBus>();
 builder.Services.AddSingleton<SetupService>();
+builder.Services.AddMemoryCache();
 
 var app = builder.Build();
 
@@ -145,6 +165,7 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseRateLimiter();
 
 // Auth middleware
 app.UseAuthentication();
@@ -154,28 +175,40 @@ app.UseAuthorization();
 app.UseMiddleware<SetupGuardMiddleware>();
 app.UseMiddleware<PostLoginRedirectMiddleware>();
 
-// Serve audio files from the data directories (after auth so only authenticated users can access)
+// Serve audio files from the data directories (authenticated endpoints)
 var dataRoot = app.Configuration["FishOrchestrator:DataRoot"] ?? @"C:\MyFishAudioProj";
 
-var outputDir = Path.Combine(dataRoot, "Output");
-if (Directory.Exists(outputDir))
+app.MapGet("/audio/output/{fileName}", (string fileName) =>
 {
-    app.UseStaticFiles(new StaticFileOptions
-    {
-        FileProvider = new PhysicalFileProvider(outputDir),
-        RequestPath = "/audio/output"
-    });
-}
+    if (fileName.Contains("..") || fileName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+        return Results.NotFound();
 
-var referencesDir = Path.Combine(dataRoot, "References");
-if (Directory.Exists(referencesDir))
+    var filePath = Path.Combine(dataRoot, "Output", fileName);
+    if (!File.Exists(filePath))
+        return Results.NotFound();
+
+    return Results.File(filePath, "audio/wav", enableRangeProcessing: true);
+}).RequireAuthorization();
+
+app.MapGet("/audio/references/{*filePath}", (string filePath) =>
 {
-    app.UseStaticFiles(new StaticFileOptions
+    if (filePath.Contains(".."))
+        return Results.NotFound();
+
+    var fullPath = Path.Combine(dataRoot, "References", filePath.Replace('/', Path.DirectorySeparatorChar));
+    if (!File.Exists(fullPath))
+        return Results.NotFound();
+
+    var contentType = Path.GetExtension(fullPath).ToLowerInvariant() switch
     {
-        FileProvider = new PhysicalFileProvider(referencesDir),
-        RequestPath = "/audio/references"
-    });
-}
+        ".wav" => "audio/wav",
+        ".mp3" => "audio/mpeg",
+        ".flac" => "audio/flac",
+        ".ogg" => "audio/ogg",
+        _ => "application/octet-stream"
+    };
+    return Results.File(fullPath, contentType, enableRangeProcessing: true);
+}).RequireAuthorization();
 
 app.UseAntiforgery();
 
@@ -208,20 +241,38 @@ app.MapPost("/api/auth/login", async (HttpContext httpContext, SignInManager<App
 
     var hasTwoFactor = await userManager.GetTwoFactorEnabledAsync(user);
     if (hasTwoFactor)
-        return Results.Redirect($"/login/totp?uid={user.Id}");
+    {
+        var cache = httpContext.RequestServices.GetRequiredService<IMemoryCache>();
+        var totpToken = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+        cache.Set($"totp-pending:{totpToken}", user.Id, TimeSpan.FromMinutes(5));
+        return Results.Redirect($"/login/totp?tid={Uri.EscapeDataString(totpToken)}");
+    }
 
     await signInManager.SignInAsync(user, isPersistent: false);
     return Results.Redirect("/");
-});
+}).RequireRateLimiting("auth");
 
-app.MapGet("/api/auth/signin", async (string userId, string? returnUrl, SignInManager<AppUser> signInManager, UserManager<AppUser> userManager) =>
+app.MapGet("/api/auth/signin", async (string token, string? returnUrl, SignInManager<AppUser> signInManager, UserManager<AppUser> userManager, IMemoryCache cache) =>
 {
+    // Validate the one-time TOTP completion token
+    var cacheKey = $"totp-verified:{token}";
+    if (!cache.TryGetValue(cacheKey, out string? userId) || userId is null)
+        return Results.Redirect("/login?error=invalid");
+
+    // Remove token so it can only be used once
+    cache.Remove(cacheKey);
+
     var user = await userManager.FindByIdAsync(userId);
     if (user is null)
         return Results.Redirect("/login");
 
     await signInManager.SignInAsync(user, isPersistent: false);
-    return Results.Redirect(returnUrl ?? "/");
+
+    // Prevent open redirect — only allow local paths
+    if (!string.IsNullOrEmpty(returnUrl) && returnUrl.StartsWith('/') && !returnUrl.StartsWith("//"))
+        return Results.Redirect(returnUrl);
+
+    return Results.Redirect("/");
 });
 
 app.MapGet("/api/auth/signout", async (SignInManager<AppUser> signInManager) =>

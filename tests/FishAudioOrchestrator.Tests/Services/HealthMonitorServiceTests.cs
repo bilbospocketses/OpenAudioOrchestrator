@@ -1,3 +1,5 @@
+using Docker.DotNet;
+using Docker.DotNet.Models;
 using FishAudioOrchestrator.Web.Data;
 using FishAudioOrchestrator.Web.Data.Entities;
 using FishAudioOrchestrator.Web.Hubs;
@@ -53,13 +55,16 @@ public class HealthMonitorServiceTests
         mockTts.Setup(t => t.GetHealthAsync(It.IsAny<string>()))
             .ReturnsAsync(false);
 
-        var scopeFactory = CreateScopeFactory(context);
+        var mockDocker = new Mock<IDockerClient>();
+        var scopeFactory = CreateScopeFactory(context, mockTts.Object);
         var (hubMock, gpuState) = CreateHubMocks();
         var service = new HealthMonitorService(
-            scopeFactory, mockTts.Object, CreateConfig(),
-            NullLogger<HealthMonitorService>.Instance, hubMock.Object, gpuState);
+            scopeFactory, mockDocker.Object, CreateConfig(),
+            NullLogger<HealthMonitorService>.Instance, hubMock.Object, gpuState, new OrchestratorEventBus());
 
-        await service.CheckHealthAsync();
+        // Need 5 consecutive failures to set Error status
+        for (int i = 0; i < 5; i++)
+            await service.CheckHealthAsync();
 
         var updated = await context.ModelProfiles.FirstAsync(m => m.Name == "unhealthy");
         Assert.Equal(ModelStatus.Error, updated.Status);
@@ -85,11 +90,12 @@ public class HealthMonitorServiceTests
         mockTts.Setup(t => t.GetHealthAsync(It.IsAny<string>()))
             .ReturnsAsync(true);
 
-        var scopeFactory = CreateScopeFactory(context);
+        var mockDocker = new Mock<IDockerClient>();
+        var scopeFactory = CreateScopeFactory(context, mockTts.Object);
         var (hubMock, gpuState) = CreateHubMocks();
         var service = new HealthMonitorService(
-            scopeFactory, mockTts.Object, CreateConfig(),
-            NullLogger<HealthMonitorService>.Instance, hubMock.Object, gpuState);
+            scopeFactory, mockDocker.Object, CreateConfig(),
+            NullLogger<HealthMonitorService>.Instance, hubMock.Object, gpuState, new OrchestratorEventBus());
 
         await service.CheckHealthAsync();
 
@@ -113,22 +119,25 @@ public class HealthMonitorServiceTests
         await context.SaveChangesAsync();
 
         var mockTts = new Mock<ITtsClientService>();
-        var scopeFactory = CreateScopeFactory(context);
+        var mockDocker = new Mock<IDockerClient>();
+        var scopeFactory = CreateScopeFactory(context, mockTts.Object);
         var (hubMock, gpuState) = CreateHubMocks();
         var service = new HealthMonitorService(
-            scopeFactory, mockTts.Object, CreateConfig(),
-            NullLogger<HealthMonitorService>.Instance, hubMock.Object, gpuState);
+            scopeFactory, mockDocker.Object, CreateConfig(),
+            NullLogger<HealthMonitorService>.Instance, hubMock.Object, gpuState, new OrchestratorEventBus());
 
         await service.CheckHealthAsync();
 
         mockTts.Verify(t => t.GetHealthAsync(It.IsAny<string>()), Times.Never);
     }
 
-    private static IServiceScopeFactory CreateScopeFactory(AppDbContext context)
+    private static IServiceScopeFactory CreateScopeFactory(AppDbContext context, ITtsClientService? ttsClient = null)
     {
         var mockScope = new Mock<IServiceScope>();
         var mockProvider = new Mock<IServiceProvider>();
         mockProvider.Setup(p => p.GetService(typeof(AppDbContext))).Returns(context);
+        if (ttsClient is not null)
+            mockProvider.Setup(p => p.GetService(typeof(ITtsClientService))).Returns(ttsClient);
         mockScope.Setup(s => s.ServiceProvider).Returns(mockProvider.Object);
 
         var mockFactory = new Mock<IServiceScopeFactory>();

@@ -9,15 +9,17 @@ public class VoiceLibraryService : IVoiceLibraryService
 {
     private readonly string _referencesPath;
     private readonly AppDbContext _context;
+    private readonly IHttpClientFactory _httpClientFactory;
 
-    public VoiceLibraryService(IConfiguration config, AppDbContext context)
+    public VoiceLibraryService(IConfiguration config, AppDbContext context, IHttpClientFactory httpClientFactory)
     {
         var dataRoot = config["FishOrchestrator:DataRoot"]!;
         _referencesPath = Path.Combine(dataRoot, "References");
         _context = context;
+        _httpClientFactory = httpClientFactory;
     }
 
-    public async Task AddVoiceAsync(string displayName, string voiceId, Stream audioFile, string transcript)
+    public async Task AddVoiceAsync(string displayName, string voiceId, Stream audioFile, string transcript, string? tags = null)
     {
         var voiceDir = Path.Combine(_referencesPath, voiceId);
         Directory.CreateDirectory(voiceDir);
@@ -36,7 +38,8 @@ public class VoiceLibraryService : IVoiceLibraryService
             VoiceId = voiceId,
             DisplayName = displayName,
             AudioFileName = "sample.wav",
-            TranscriptText = transcript
+            TranscriptText = transcript,
+            Tags = string.IsNullOrWhiteSpace(tags) ? null : tags
         });
         await _context.SaveChangesAsync();
     }
@@ -49,7 +52,7 @@ public class VoiceLibraryService : IVoiceLibraryService
         voice.DisplayName = displayName;
         voice.TranscriptText = transcriptText;
         voice.Tags = tags;
-        voice.UpdatedAt = DateTime.UtcNow;
+        voice.UpdatedAt = DateTimeOffset.UtcNow;
 
         var labPath = Path.Combine(_referencesPath, voice.VoiceId, "sample.lab");
         if (File.Exists(labPath))
@@ -83,7 +86,8 @@ public class VoiceLibraryService : IVoiceLibraryService
     public async Task SyncVoicesToContainerAsync(string containerBaseUrl)
     {
         var voices = await _context.ReferenceVoices.ToListAsync();
-        using var httpClient = new HttpClient { BaseAddress = new Uri(containerBaseUrl) };
+        using var httpClient = _httpClientFactory.CreateClient();
+        httpClient.BaseAddress = new Uri(containerBaseUrl);
 
         foreach (var voice in voices)
         {

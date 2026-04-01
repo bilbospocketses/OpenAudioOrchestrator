@@ -1,6 +1,6 @@
 @page "/logs"
 @attribute [Authorize]
-@inject AppDbContext Db
+@inject IDbContextFactory<AppDbContext> DbFactory
 @inject IContainerLogService LogService
 @using Microsoft.EntityFrameworkCore
 @using FishAudioOrchestrator.Web.Data
@@ -53,7 +53,8 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        _models = await Db.ModelProfiles
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _models = await db.ModelProfiles
             .Where(m => m.ContainerId != null)
             .OrderByDescending(m => m.Status == ModelStatus.Running)
             .ThenBy(m => m.Name)

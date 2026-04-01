@@ -138,7 +138,7 @@ namespace FishAudioOrchestrator.Web.Data.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("GenerationLogs");
+                    b.ToTable("GenerationLogs", (string)null);
                 });
 
             modelBuilder.Entity("FishAudioOrchestrator.Web.Data.Entities.ModelProfile", b =>
@@ -190,7 +190,7 @@ namespace FishAudioOrchestrator.Web.Data.Migrations
                     b.HasIndex("Name")
                         .IsUnique();
 
-                    b.ToTable("ModelProfiles");
+                    b.ToTable("ModelProfiles", (string)null);
                 });
 
             modelBuilder.Entity("FishAudioOrchestrator.Web.Data.Entities.ReferenceVoice", b =>
@@ -233,7 +233,7 @@ namespace FishAudioOrchestrator.Web.Data.Migrations
                     b.HasIndex("VoiceId")
                         .IsUnique();
 
-                    b.ToTable("ReferenceVoices");
+                    b.ToTable("ReferenceVoices", (string)null);
                 });
 
             modelBuilder.Entity("FishAudioOrchestrator.Web.Data.Entities.TtsJob", b =>
@@ -293,7 +293,7 @@ namespace FishAudioOrchestrator.Web.Data.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("TtsJobs");
+                    b.ToTable("TtsJobs", (string)null);
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole", b =>

@@ -1,7 +1,7 @@
 @page "/playground"
 @attribute [Authorize]
 @inject IVoiceLibraryService VoiceService
-@inject AppDbContext Db
+@inject IDbContextFactory<AppDbContext> DbFactory
 @using Microsoft.EntityFrameworkCore
 @using FishAudioOrchestrator.Web.Data
 @using FishAudioOrchestrator.Web.Data.Entities
@@ -155,7 +155,8 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        _activeModel = await Db.ModelProfiles
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _activeModel = await db.ModelProfiles
             .FirstOrDefaultAsync(m => m.Status == ModelStatus.Running);
         _voices = await VoiceService.ListVoicesAsync();
 
@@ -163,7 +164,7 @@ else
         var user = await UserManager.GetUserAsync(state.User);
         var userId = user?.Id;
 
-        _jobs = await Db.TtsJobs
+        _jobs = await db.TtsJobs
             .Where(j => j.UserId == userId && j.Status != TtsJobStatus.Completed)
             .OrderBy(j => j.CreatedAt)
             .ToListAsync();
@@ -184,7 +185,8 @@ else
             }
             else if (runningEvent is not null && (_activeModel is null || runningEvent.ModelId != _activeModel.Id))
             {
-                _activeModel = await Db.ModelProfiles.FirstOrDefaultAsync(m => m.Id == runningEvent.ModelId);
+                await using var db = await DbFactory.CreateDbContextAsync();
+                _activeModel = await db.ModelProfiles.FirstOrDefaultAsync(m => m.Id == runningEvent.ModelId);
                 StateHasChanged();
             }
         });
@@ -224,7 +226,8 @@ else
         var jobIds = _jobs.Select(j => j.Id).ToList();
         if (jobIds.Count == 0) return;
 
-        var freshStatuses = await Db.TtsJobs
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var freshStatuses = await db.TtsJobs
             .AsNoTracking()
             .Where(j => jobIds.Contains(j.Id))
             .Select(j => new { j.Id, j.Status, j.ErrorMessage })
@@ -263,10 +266,12 @@ else
         var state = await AuthState;
         var user = await UserManager.GetUserAsync(state.User);
 
+        await using var db = await DbFactory.CreateDbContextAsync();
+
         int? voiceDbId = null;
         if (!string.IsNullOrEmpty(_selectedVoiceId))
         {
-            var voice = await Db.ReferenceVoices
+            var voice = await db.ReferenceVoices
                 .FirstOrDefaultAsync(v => v.VoiceId == _selectedVoiceId);
             voiceDbId = voice?.Id;
         }
@@ -282,8 +287,8 @@ else
             OutputFileName = TtsClientService.GenerateOutputFileName(_format)
         };
 
-        Db.TtsJobs.Add(job);
-        await Db.SaveChangesAsync();
+        db.TtsJobs.Add(job);
+        await db.SaveChangesAsync();
 
         _jobs.Add(job);
         _inputText = "";
@@ -291,27 +296,29 @@ else
 
     private async Task CancelJob(TtsJob job)
     {
-        Db.TtsJobs.Remove(job);
-        await Db.SaveChangesAsync();
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.TtsJobs.Remove(job);
+        await db.SaveChangesAsync();
         _jobs.Remove(job);
     }
 
     private async Task RetryJob(TtsJob job)
     {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.Attach(job);
         job.Status = TtsJobStatus.Queued;
         job.ErrorMessage = null;
         job.StartedAt = null;
         job.CompletedAt = null;
-        await Db.SaveChangesAsync();
+        await db.SaveChangesAsync();
     }
 
     private async Task DismissJob(TtsJob job)
     {
-        Db.TtsJobs.Remove(job);
-        await Db.SaveChangesAsync();
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.TtsJobs.Remove(job);
+        await db.SaveChangesAsync();
         _jobs.Remove(job);
     }
 
-    private static string Truncate(string text, int maxLength) =>
-        text.Length <= maxLength ? text : text[..maxLength] + "...";
 }

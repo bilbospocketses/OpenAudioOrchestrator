@@ -18,7 +18,12 @@ public class PostLoginRedirectMiddleware
         "/setup",
         "/access-denied",
         "/_framework",
-        "/_blazor"
+        "/_blazor",
+        "/_content",
+        "/api/",
+        "/hubs/",
+        "/css",
+        "/audio/"
     };
 
     public PostLoginRedirectMiddleware(RequestDelegate next)
@@ -36,6 +41,14 @@ public class PostLoginRedirectMiddleware
         }
 
         var path = context.Request.Path;
+
+        // Skip static assets and non-page routes to avoid unnecessary DB queries
+        if (path.Value?.Contains('.') == true)
+        {
+            await _next(context);
+            return;
+        }
+
         foreach (var prefix in _exemptPrefixes)
         {
             if (path.StartsWithSegments(prefix))

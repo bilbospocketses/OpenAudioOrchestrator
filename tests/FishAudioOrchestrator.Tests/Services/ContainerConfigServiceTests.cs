@@ -102,7 +102,7 @@ public class ContainerConfigServiceTests
         };
         var result = service.BuildCreateParams(profile);
         Assert.Contains(result.HostConfig.Binds,
-            b => b == @"D:\DockerData\FishAudio\Checkpoints\s2-pro:/app/checkpoints");
+            b => b == @"D:\DockerData\FishAudio\Checkpoints:/app/checkpoints");
         Assert.Contains(result.HostConfig.Binds,
             b => b == @"D:\DockerData\FishAudio\References:/app/references");
         Assert.Contains(result.HostConfig.Binds,
@@ -121,7 +121,7 @@ public class ContainerConfigServiceTests
             EnableHalf = true, Status = ModelStatus.Created
         };
         var result = service.BuildCreateParams(profile);
-        Assert.Contains(result.Env, e => e == @"FISH_API_SERVER_ARGS=[""--half""]");
+        Assert.Contains(result.Cmd, c => c == "--half");
     }
 
     [Fact]
@@ -136,7 +136,7 @@ public class ContainerConfigServiceTests
             EnableHalf = false, Status = ModelStatus.Created
         };
         var result = service.BuildCreateParams(profile);
-        Assert.DoesNotContain(result.Env, e => e.StartsWith("FISH_API_SERVER_ARGS"));
+        Assert.DoesNotContain(result.Cmd, c => c == "--half");
     }
 
     [Fact]

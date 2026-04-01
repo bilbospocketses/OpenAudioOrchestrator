@@ -20,9 +20,9 @@ public class TtsJob
     public required string OutputFileName { get; set; }
     public TtsJobStatus Status { get; set; } = TtsJobStatus.Queued;
     public string? ErrorMessage { get; set; }
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    public DateTime? StartedAt { get; set; }
-    public DateTime? CompletedAt { get; set; }
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? StartedAt { get; set; }
+    public DateTimeOffset? CompletedAt { get; set; }
 
     public ModelProfile ModelProfile { get; set; } = null!;
     public ReferenceVoice? ReferenceVoice { get; set; }

@@ -62,7 +62,7 @@ public class DockerOrchestratorService : IDockerOrchestratorService
                 }
 
                 profile.Status = ModelStatus.Running;
-                profile.LastStartedAt = DateTime.UtcNow;
+                profile.LastStartedAt = DateTimeOffset.UtcNow;
                 await _context.SaveChangesAsync();
                 await UpdateProxyAsync(profile);
                 await PushStatusUpdateAsync();
@@ -83,7 +83,7 @@ public class DockerOrchestratorService : IDockerOrchestratorService
             response.ID, new ContainerStartParameters());
 
         profile.Status = ModelStatus.Running;
-        profile.LastStartedAt = DateTime.UtcNow;
+        profile.LastStartedAt = DateTimeOffset.UtcNow;
         await _context.SaveChangesAsync();
         await UpdateProxyAsync(profile);
         await PushStatusUpdateAsync();

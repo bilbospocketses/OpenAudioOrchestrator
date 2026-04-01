@@ -1,6 +1,6 @@
 @page "/deploy"
 @attribute [Authorize(Roles = "Admin")]
-@inject AppDbContext Db
+@inject IDbContextFactory<AppDbContext> DbFactory
 @inject IDockerOrchestratorService Orchestrator
 @inject IContainerConfigService ConfigService
 @inject NavigationManager Nav
@@ -102,6 +102,8 @@
     </div>
 </div>
 
+@implements IAsyncDisposable
+
 @code {
     private DeployForm _form = new();
     private ModelProfile? _activeModel;
@@ -118,8 +120,11 @@
         _form.CheckpointPath = Path.Combine(dataRoot, "Checkpoints", "s2-pro");
         _form.ImageTag = defaultImage;
 
-        _activeModel = await Db.ModelProfiles
-            .FirstOrDefaultAsync(m => m.Status == ModelStatus.Running);
+        await using (var db = await DbFactory.CreateDbContextAsync())
+        {
+            _activeModel = await db.ModelProfiles
+                .FirstOrDefaultAsync(m => m.Status == ModelStatus.Running);
+        }
 
         var checkpointsParent = Path.GetDirectoryName(_form.CheckpointPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)) ?? _form.CheckpointPath;
         _modelPresent = SetupSvc.IsModelPresent(checkpointsParent);
@@ -129,8 +134,10 @@
     {
         _error = null;
 
+        await using var db = await DbFactory.CreateDbContextAsync();
+
         // Validate name uniqueness
-        if (await Db.ModelProfiles.AnyAsync(m => m.Name == _form.Name))
+        if (await db.ModelProfiles.AnyAsync(m => m.Name == _form.Name))
         {
             _error = $"A model named '{_form.Name}' already exists.";
             return;
@@ -160,8 +167,8 @@
                 Status = ModelStatus.Created
             };
 
-            Db.ModelProfiles.Add(profile);
-            await Db.SaveChangesAsync();
+            db.ModelProfiles.Add(profile);
+            await db.SaveChangesAsync();
 
             await Orchestrator.SwapModelAsync(profile);
 
@@ -207,5 +214,11 @@
         public string? CudaAllocConf { get; set; }
 
         public bool EnableHalf { get; set; } = true;
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        _deployDownloadTimer?.Dispose();
+        return ValueTask.CompletedTask;
     }
 }

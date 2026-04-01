@@ -196,12 +196,19 @@
             return;
         }
 
+        if (!System.Text.RegularExpressions.Regex.IsMatch(_addVoiceId.Trim(), @"^[a-zA-Z0-9_-]+$"))
+        {
+            _error = "Voice ID must contain only letters, numbers, hyphens, and underscores.";
+            return;
+        }
+
         _isAdding = true;
         try
         {
             using var stream = _uploadedFile.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024);
             await VoiceService.AddVoiceAsync(_addDisplayName.Trim(), _addVoiceId.Trim(),
-                stream, _addTranscript.Trim());
+                stream, _addTranscript.Trim(),
+                string.IsNullOrWhiteSpace(_addTags) ? null : _addTags.Trim());
 
             _addDisplayName = "";
             _addVoiceId = "";
@@ -252,6 +259,4 @@
         _confirmDialog.Show();
     }
 
-    private static string Truncate(string text, int maxLength) =>
-        text.Length <= maxLength ? text : text[..maxLength] + "...";
 }
