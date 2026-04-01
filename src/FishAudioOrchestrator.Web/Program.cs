@@ -282,3 +282,6 @@ app.MapGet("/api/auth/signout", async (SignInManager<AppUser> signInManager) =>
 });
 
 app.Run();
+
+// Make Program accessible for WebApplicationFactory integration tests
+public partial class Program { }
