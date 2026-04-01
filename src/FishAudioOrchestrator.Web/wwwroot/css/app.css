@@ -111,6 +111,14 @@ a:hover {
     box-shadow: 0 0 0 0.2rem rgba(96, 165, 250, 0.25);
 }
 
+.form-control:disabled,
+.form-select:disabled {
+    background-color: #1a1a2e;
+    border-color: #444;
+    color: #94a3b8;
+    opacity: 1;
+}
+
 .form-control::placeholder {
     color: #6b7280;
 }
