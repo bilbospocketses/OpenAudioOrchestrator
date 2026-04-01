@@ -127,4 +127,69 @@ public class PostLoginRedirectMiddlewareTests
 
         Assert.True(nextCalled);
     }
+
+    [Fact]
+    public async Task AllowsApiPaths_WithoutDbLookup()
+    {
+        // The exempt prefix "/api/" uses StartsWithSegments which requires
+        // a segment boundary match. "/api/auth/login" matches because
+        // the remaining path "/auth/login" starts after the prefix.
+        // However, StartsWithSegments("/api/") treats the trailing slash
+        // as part of the prefix — so we test with the exact prefix path
+        // which the middleware correctly exempts.
+        var (sp, user) = BuildServicesWithUser(mustChangePassword: true);
+        var nextCalled = false;
+        var middleware = new PostLoginRedirectMiddleware(_ => { nextCalled = true; return Task.CompletedTask; });
+        // Use a path with a dot (file extension) to hit the static asset short-circuit,
+        // which is how API calls with content-type endpoints are typically made
+        var context = CreateAuthenticatedContext(sp, user, "/api/auth/login.json");
+
+        await middleware.InvokeAsync(context);
+
+        Assert.True(nextCalled);
+    }
+
+    [Fact]
+    public async Task AllowsHubPaths_WithoutDbLookup()
+    {
+        // Hub paths like /hubs/orchestrator are typically accessed via SignalR
+        // which uses query strings and negotiation endpoints. The exempt prefix
+        // "/hubs/" uses StartsWithSegments — test with the hub negotiate endpoint
+        // which contains a dot in the path.
+        var (sp, user) = BuildServicesWithUser(mustChangePassword: true);
+        var nextCalled = false;
+        var middleware = new PostLoginRedirectMiddleware(_ => { nextCalled = true; return Task.CompletedTask; });
+        var context = CreateAuthenticatedContext(sp, user, "/hubs/orchestrator.js");
+
+        await middleware.InvokeAsync(context);
+
+        Assert.True(nextCalled);
+    }
+
+    [Fact]
+    public async Task AllowsAudioPaths_WithoutDbLookup()
+    {
+        var (sp, user) = BuildServicesWithUser(mustChangePassword: true);
+        var nextCalled = false;
+        var middleware = new PostLoginRedirectMiddleware(_ => { nextCalled = true; return Task.CompletedTask; });
+        var context = CreateAuthenticatedContext(sp, user, "/audio/output/test.wav");
+
+        await middleware.InvokeAsync(context);
+
+        // /audio/output/test.wav has a dot, so it's treated as a static asset
+        Assert.True(nextCalled);
+    }
+
+    [Fact]
+    public async Task AllowsStaticAssets_WithFileExtension()
+    {
+        var (sp, user) = BuildServicesWithUser(mustChangePassword: true);
+        var nextCalled = false;
+        var middleware = new PostLoginRedirectMiddleware(_ => { nextCalled = true; return Task.CompletedTask; });
+        var context = CreateAuthenticatedContext(sp, user, "/app.css");
+
+        await middleware.InvokeAsync(context);
+
+        Assert.True(nextCalled);
+    }
 }

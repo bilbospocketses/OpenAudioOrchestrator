@@ -145,6 +145,164 @@ public class HealthMonitorServiceTests
         return mockFactory.Object;
     }
 
+    [Fact]
+    public async Task CheckHealthAsync_UsesDockerInspection_WhenActiveJobsExist()
+    {
+        var context = CreateInMemoryContext();
+        var model = new ModelProfile
+        {
+            Name = "busy-model",
+            CheckpointPath = @"D:\path",
+            ImageTag = "fishaudio/fish-speech:server-cuda",
+            HostPort = 9001,
+            ContainerId = "container-busy",
+            Status = ModelStatus.Running
+        };
+        context.ModelProfiles.Add(model);
+
+        var job = new TtsJob
+        {
+            ModelProfileId = model.Id,
+            InputText = "test",
+            Format = "wav",
+            OutputFileName = "test.wav",
+            Status = TtsJobStatus.Processing
+        };
+        context.TtsJobs.Add(job);
+        await context.SaveChangesAsync();
+
+        var mockTts = new Mock<ITtsClientService>();
+        mockTts.Setup(t => t.GetHealthAsync(It.IsAny<string>())).ReturnsAsync(true);
+
+        var mockDocker = new Mock<IDockerClient>();
+        var mockContainers = new Mock<Docker.DotNet.IContainerOperations>();
+        mockContainers.Setup(c => c.InspectContainerAsync("container-busy", default))
+            .ReturnsAsync(new ContainerInspectResponse
+            {
+                State = new ContainerState { Running = true }
+            });
+        mockDocker.Setup(d => d.Containers).Returns(mockContainers.Object);
+
+        var scopeFactory = CreateScopeFactory(context, mockTts.Object);
+        var (hubMock, gpuState) = CreateHubMocks();
+        var service = new HealthMonitorService(
+            scopeFactory, mockDocker.Object, CreateConfig(),
+            NullLogger<HealthMonitorService>.Instance, hubMock.Object, gpuState, new OrchestratorEventBus());
+
+        await service.CheckHealthAsync();
+
+        mockContainers.Verify(c => c.InspectContainerAsync("container-busy", default), Times.Once);
+        mockTts.Verify(t => t.GetHealthAsync(It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CheckHealthAsync_DoesNotSetError_BeforeFiveFailures()
+    {
+        var context = CreateInMemoryContext();
+        var model = new ModelProfile
+        {
+            Name = "almost-failing",
+            CheckpointPath = @"D:\path",
+            ImageTag = "fishaudio/fish-speech:server-cuda",
+            HostPort = 9001,
+            ContainerId = "container-4",
+            Status = ModelStatus.Running
+        };
+        context.ModelProfiles.Add(model);
+        await context.SaveChangesAsync();
+
+        var mockTts = new Mock<ITtsClientService>();
+        mockTts.Setup(t => t.GetHealthAsync(It.IsAny<string>())).ReturnsAsync(false);
+
+        var mockDocker = new Mock<IDockerClient>();
+        var scopeFactory = CreateScopeFactory(context, mockTts.Object);
+        var (hubMock, gpuState) = CreateHubMocks();
+        var service = new HealthMonitorService(
+            scopeFactory, mockDocker.Object, CreateConfig(),
+            NullLogger<HealthMonitorService>.Instance, hubMock.Object, gpuState, new OrchestratorEventBus());
+
+        // Only 4 failures — should NOT set Error
+        for (int i = 0; i < 4; i++)
+            await service.CheckHealthAsync();
+
+        var updated = await context.ModelProfiles.FirstAsync(m => m.Name == "almost-failing");
+        Assert.Equal(ModelStatus.Running, updated.Status);
+    }
+
+    [Fact]
+    public async Task CheckHealthAsync_ResetsConsecutiveFailures_OnSuccess()
+    {
+        var context = CreateInMemoryContext();
+        var model = new ModelProfile
+        {
+            Name = "intermittent",
+            CheckpointPath = @"D:\path",
+            ImageTag = "fishaudio/fish-speech:server-cuda",
+            HostPort = 9001,
+            ContainerId = "container-int",
+            Status = ModelStatus.Running
+        };
+        context.ModelProfiles.Add(model);
+        await context.SaveChangesAsync();
+
+        var mockTts = new Mock<ITtsClientService>();
+        var mockDocker = new Mock<IDockerClient>();
+        var scopeFactory = CreateScopeFactory(context, mockTts.Object);
+        var (hubMock, gpuState) = CreateHubMocks();
+        var service = new HealthMonitorService(
+            scopeFactory, mockDocker.Object, CreateConfig(),
+            NullLogger<HealthMonitorService>.Instance, hubMock.Object, gpuState, new OrchestratorEventBus());
+
+        // Fail 3 times
+        mockTts.Setup(t => t.GetHealthAsync(It.IsAny<string>())).ReturnsAsync(false);
+        for (int i = 0; i < 3; i++)
+            await service.CheckHealthAsync();
+
+        // Succeed once — resets the counter
+        mockTts.Setup(t => t.GetHealthAsync(It.IsAny<string>())).ReturnsAsync(true);
+        await service.CheckHealthAsync();
+
+        // Fail 4 more times — total consecutive is only 4, not 7
+        mockTts.Setup(t => t.GetHealthAsync(It.IsAny<string>())).ReturnsAsync(false);
+        for (int i = 0; i < 4; i++)
+            await service.CheckHealthAsync();
+
+        var updated = await context.ModelProfiles.FirstAsync(m => m.Name == "intermittent");
+        Assert.Equal(ModelStatus.Running, updated.Status);
+    }
+
+    [Fact]
+    public async Task CheckHealthAsync_RecoverFromError_OnSuccessfulHealthCheck()
+    {
+        var context = CreateInMemoryContext();
+        var model = new ModelProfile
+        {
+            Name = "recovering",
+            CheckpointPath = @"D:\path",
+            ImageTag = "fishaudio/fish-speech:server-cuda",
+            HostPort = 9001,
+            ContainerId = "container-err",
+            Status = ModelStatus.Error
+        };
+        context.ModelProfiles.Add(model);
+        await context.SaveChangesAsync();
+
+        var mockTts = new Mock<ITtsClientService>();
+        mockTts.Setup(t => t.GetHealthAsync(It.IsAny<string>())).ReturnsAsync(true);
+
+        var mockDocker = new Mock<IDockerClient>();
+        var scopeFactory = CreateScopeFactory(context, mockTts.Object);
+        var (hubMock, gpuState) = CreateHubMocks();
+        var service = new HealthMonitorService(
+            scopeFactory, mockDocker.Object, CreateConfig(),
+            NullLogger<HealthMonitorService>.Instance, hubMock.Object, gpuState, new OrchestratorEventBus());
+
+        await service.CheckHealthAsync();
+
+        var updated = await context.ModelProfiles.FirstAsync(m => m.Name == "recovering");
+        Assert.Equal(ModelStatus.Running, updated.Status);
+    }
+
     private static (Mock<IHubContext<OrchestratorHub>> hubMock, GpuMetricsState gpuState) CreateHubMocks()
     {
         var hubMock = new Mock<IHubContext<OrchestratorHub>>();

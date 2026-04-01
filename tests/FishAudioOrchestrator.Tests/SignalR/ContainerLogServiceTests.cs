@@ -61,4 +61,45 @@ public class ContainerLogServiceTests
         await service.UnsubscribeAsync("container-1", "conn-a");
         Assert.True(service.HasSubscribers("container-1"));
     }
+
+    [Fact]
+    public void SubscribeCallback_AddsCallback()
+    {
+        var (service, _) = CreateService();
+        Action<LogLineEvent> callback = _ => { };
+
+        service.SubscribeCallback("container-1", "sub-1", callback);
+
+        Assert.True(service.HasSubscribers("container-1"));
+    }
+
+    [Fact]
+    public void UnsubscribeCallback_RemovesCallback()
+    {
+        var (service, _) = CreateService();
+        Action<LogLineEvent> callback = _ => { };
+
+        service.SubscribeCallback("container-1", "sub-1", callback);
+        Assert.True(service.HasSubscribers("container-1"));
+
+        service.UnsubscribeCallback("container-1", "sub-1");
+        Assert.False(service.HasSubscribers("container-1"));
+    }
+
+    [Fact]
+    public void UnsubscribeAllCallbacks_RemovesAllForContainer()
+    {
+        var (service, _) = CreateService();
+        Action<LogLineEvent> callback1 = _ => { };
+        Action<LogLineEvent> callback2 = _ => { };
+
+        service.SubscribeCallback("container-1", "sub-1", callback1);
+        service.SubscribeCallback("container-2", "sub-1", callback2);
+        Assert.True(service.HasSubscribers("container-1"));
+        Assert.True(service.HasSubscribers("container-2"));
+
+        service.UnsubscribeAllCallbacks("sub-1");
+        Assert.False(service.HasSubscribers("container-1"));
+        Assert.False(service.HasSubscribers("container-2"));
+    }
 }

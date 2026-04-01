@@ -83,19 +83,47 @@ public class UserManagementTests
     [Fact]
     public async Task CannotDeleteLastAdmin()
     {
+        // The UI prevents deletion when GetUsersInRoleAsync("Admin").Count <= 1.
+        // This test verifies that condition check works: with one admin, deletion
+        // is blocked; with two admins, deletion of one is allowed.
         var (sp, userMgr, _) = BuildServices();
 
-        var admin = new AppUser
+        var admin1 = new AppUser
         {
-            UserName = "admin",
-            DisplayName = "Admin",
+            UserName = "admin1",
+            DisplayName = "Admin One",
             CreatedAt = DateTimeOffset.UtcNow
         };
-        await userMgr.CreateAsync(admin, "Admin123!@");
-        await userMgr.AddToRoleAsync(admin, "Admin");
+        await userMgr.CreateAsync(admin1, "Admin123!@");
+        await userMgr.AddToRoleAsync(admin1, "Admin");
 
+        // With only one admin, the protection condition is met
         var admins = await userMgr.GetUsersInRoleAsync("Admin");
         Assert.Single(admins);
+        Assert.True(admins.Count <= 1, "Protection should block: only one admin exists");
+
+        // Add a second admin
+        var admin2 = new AppUser
+        {
+            UserName = "admin2",
+            DisplayName = "Admin Two",
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        await userMgr.CreateAsync(admin2, "Admin123!@");
+        await userMgr.AddToRoleAsync(admin2, "Admin");
+
+        admins = await userMgr.GetUsersInRoleAsync("Admin");
+        Assert.Equal(2, admins.Count);
+        Assert.False(admins.Count <= 1, "Protection should allow: two admins exist");
+
+        // Actually delete admin2 (allowed because 2 admins exist)
+        await userMgr.DeleteAsync(admin2);
+
+        // Now only one admin remains — protection kicks in again
+        admins = await userMgr.GetUsersInRoleAsync("Admin");
+        Assert.Single(admins);
+        Assert.True(admins.Count <= 1, "Protection should block again: back to one admin");
+        Assert.Equal("admin1", admins[0].UserName);
     }
 
     [Fact]
