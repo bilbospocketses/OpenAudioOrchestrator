@@ -41,7 +41,7 @@ Fish Audio Orchestrator runs locally on Windows (Linux testing and instructions 
 1. **Clone and run**
 
    ```bash
-   git clone https://github.com/sfidelisboxtechs/FishAudioOrchestrator.git
+   git clone https://github.com/bilbospocketses/FishAudioOrchestrator.git
    cd FishAudioOrchestrator
    dotnet run --project src/FishAudioOrchestrator.Web
    ```
