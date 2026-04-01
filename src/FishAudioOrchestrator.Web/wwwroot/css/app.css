@@ -78,6 +78,11 @@ a:hover {
     color: #b0bec5 !important;
 }
 
+.card .card-title,
+.card .form-label {
+    color: #e2e8f0;
+}
+
 .card-header {
     background-color: #0f3460;
     border-bottom-color: #333;
