@@ -192,7 +192,7 @@ else
 
     private void OnTtsJobStatusRaw(TtsJobStatusEvent evt)
     {
-        _ = InvokeAsync(() =>
+        _ = InvokeAsync(async () =>
         {
             var job = _jobs.FirstOrDefault(j => j.Id == evt.JobId);
             if (job is null) return;
@@ -200,6 +200,10 @@ else
             if (evt.Status == "Completed")
             {
                 _jobs.Remove(job);
+
+                // Refresh statuses for remaining jobs so the next job
+                // shows "Processing" even if its event hasn't arrived yet
+                await RefreshJobStatusesAsync();
             }
             else if (evt.Status == "Failed")
             {
@@ -213,6 +217,28 @@ else
 
             StateHasChanged();
         });
+    }
+
+    private async Task RefreshJobStatusesAsync()
+    {
+        var jobIds = _jobs.Select(j => j.Id).ToList();
+        if (jobIds.Count == 0) return;
+
+        var freshStatuses = await Db.TtsJobs
+            .AsNoTracking()
+            .Where(j => jobIds.Contains(j.Id))
+            .Select(j => new { j.Id, j.Status, j.ErrorMessage })
+            .ToListAsync();
+
+        foreach (var fresh in freshStatuses)
+        {
+            var job = _jobs.FirstOrDefault(j => j.Id == fresh.Id);
+            if (job is not null)
+            {
+                job.Status = fresh.Status;
+                job.ErrorMessage = fresh.ErrorMessage;
+            }
+        }
     }
 
     public ValueTask DisposeAsync()
