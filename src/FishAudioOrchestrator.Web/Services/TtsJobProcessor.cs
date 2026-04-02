@@ -16,7 +16,7 @@ public class TtsJobProcessor : BackgroundService
     private readonly ILogger<TtsJobProcessor> _logger;
     private readonly string _outputPath;
     private readonly TtsJobSignal _jobSignal;
-    private static readonly TimeSpan JobTimeout = TimeSpan.FromHours(2);
+    private static readonly TimeSpan JobTimeout = TimeSpan.FromHours(5);
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(5);
 
     public TtsJobProcessor(
@@ -167,7 +167,7 @@ public class TtsJobProcessor : BackgroundService
                         "-H", "Content-Type: application/json",
                         "-d", $"@{containerRequestPath}",
                         "--output", containerOutputPath,
-                        "--max-time", "7200"
+                        "--max-time", "18000"
                     },
                     AttachStdout = true,
                     AttachStderr = true
