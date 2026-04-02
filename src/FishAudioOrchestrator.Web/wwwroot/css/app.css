@@ -237,6 +237,31 @@ a:hover {
     color: var(--form-text-color);
 }
 
+/* File input — style the browser-native button to match the theme */
+input[type="file"].form-control::file-selector-button {
+    background-color: var(--bg-surface-alt);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+}
+
+input[type="file"].form-control:hover::file-selector-button {
+    background-color: var(--bg-surface);
+    color: var(--text-primary);
+}
+
+/* btn-outline-light — restyle to work on both themes */
+.btn-outline-light {
+    color: var(--text-primary);
+    border-color: var(--border-light);
+    background-color: transparent;
+}
+
+.btn-outline-light:hover {
+    color: var(--text-heading);
+    background-color: var(--bg-surface-alt);
+    border-color: var(--border-light);
+}
+
 .form-floating > .form-control-plaintext::placeholder,
 .form-floating > .form-control::placeholder {
     color: var(--bs-secondary-color);
