@@ -618,22 +618,6 @@
             }
         }
 
-        try
-        {
-            await SettingsSvc.SaveSettingsAsync(
-                _databasePath,
-                _checkpointsDir, _referencesDir, _outputDir,
-                _portStart, _portEnd,
-                string.IsNullOrWhiteSpace(_domain) ? null : _domain.Trim(),
-                string.IsNullOrWhiteSpace(_email) ? null : _email.Trim(),
-                string.IsNullOrWhiteSpace(_databaseKey) ? null : _databaseKey.Trim());
-        }
-        catch (Exception ex)
-        {
-            _error = $"Failed to save settings: {ex.Message}";
-            return;
-        }
-
         _step = 5;
     }
 
@@ -701,12 +685,58 @@
         _createdUser.MustSetupTotp = false;
         await UserManager.UpdateAsync(_createdUser);
 
+        // Move the database file to the user-specified path if different from the current location
+        var currentDbPath = GetCurrentDatabasePath();
+        var targetDbPath = Path.GetFullPath(_databasePath);
+        if (currentDbPath is not null && !string.Equals(currentDbPath, targetDbPath, StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                // Close connections so the file can be moved
+                // EF Core SQLite holds the connection; we need to copy instead of move
+                var targetDir = Path.GetDirectoryName(targetDbPath);
+                if (targetDir is not null && !Directory.Exists(targetDir))
+                    Directory.CreateDirectory(targetDir);
+                File.Copy(currentDbPath, targetDbPath, overwrite: true);
+
+                // Also copy WAL/SHM if they exist
+                var walSrc = currentDbPath + "-wal";
+                var shmSrc = currentDbPath + "-shm";
+                if (File.Exists(walSrc)) File.Copy(walSrc, targetDbPath + "-wal", overwrite: true);
+                if (File.Exists(shmSrc)) File.Copy(shmSrc, targetDbPath + "-shm", overwrite: true);
+            }
+            catch (Exception ex)
+            {
+                _error = $"Failed to copy database to '{targetDbPath}': {ex.Message}";
+                _loading = false;
+                return;
+            }
+        }
+
+        // Save all settings to appsettings.json (after user creation so DB path points to the right file)
+        try
+        {
+            await SettingsSvc.SaveSettingsAsync(
+                _databasePath,
+                _checkpointsDir, _referencesDir, _outputDir,
+                _portStart, _portEnd,
+                string.IsNullOrWhiteSpace(_domain) ? null : _domain.Trim(),
+                string.IsNullOrWhiteSpace(_email) ? null : _email.Trim(),
+                string.IsNullOrWhiteSpace(_databaseKey) ? null : _databaseKey.Trim());
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to save settings: {ex.Message}";
+            _loading = false;
+            return;
+        }
+
         // Encrypt the database if a key was provided in Step 4
         if (!string.IsNullOrWhiteSpace(_databaseKey))
         {
             try
             {
-                await SettingsSvc.EncryptDatabaseAsync(Path.GetFullPath(_databasePath), _databaseKey.Trim());
+                await SettingsSvc.EncryptDatabaseAsync(targetDbPath, _databaseKey.Trim());
             }
             catch (Exception ex)
             {
@@ -732,6 +762,19 @@
                 StateHasChanged();
             }), null, 2000, 3000);
         }
+    }
+
+    private string? GetCurrentDatabasePath()
+    {
+        var connStr = Config.GetConnectionString("Default");
+        if (connStr is null) return null;
+        var prefix = "Data Source=";
+        var idx = connStr.IndexOf(prefix, StringComparison.OrdinalIgnoreCase);
+        if (idx < 0) return null;
+        var pathStart = idx + prefix.Length;
+        var semicolonIdx = connStr.IndexOf(';', pathStart);
+        var path = semicolonIdx >= 0 ? connStr[pathStart..semicolonIdx] : connStr[pathStart..];
+        return Path.GetFullPath(path);
     }
 
     public ValueTask DisposeAsync()
