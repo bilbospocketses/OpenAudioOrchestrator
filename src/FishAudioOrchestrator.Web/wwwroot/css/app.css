@@ -43,6 +43,9 @@
     --status-created: #aaaaaa;
     --modal-bg: #333333;
     --progress-bg: #3a3a3a;
+    --bs-body-color: #e0e0e0;
+    --bs-body-bg: #2a2a2a;
+    --bs-heading-color: #e0e0e0;
 }
 
 [data-theme="light"] {
@@ -84,6 +87,9 @@
     --status-created: #888888;
     --modal-bg: #ffffff;
     --progress-bg: #e5e5e5;
+    --bs-body-color: #1a1a1a;
+    --bs-body-bg: #ffffff;
+    --bs-heading-color: #1a1a1a;
 }
 
 /* --- Base ------------------------------------------------------------ */
@@ -91,6 +97,10 @@
 body {
     background-color: var(--bg-body);
     color: var(--text-primary);
+}
+
+h1, h2, h3, h4, h5, h6 {
+    color: var(--text-heading);
 }
 
 h1:focus {
@@ -242,8 +252,13 @@ a:hover {
     border-color: #929292;
 }
 
-.form-label {
+.form-label,
+label {
     color: var(--text-primary);
+}
+
+p, li, small, strong, span {
+    color: inherit;
 }
 
 /* --- Blazor validation ----------------------------------------------- */
