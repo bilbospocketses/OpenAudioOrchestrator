@@ -466,13 +466,14 @@
     {
         _preCheckError = null;
         _modelAlreadyPresent = DownloadSvc.IsModelPresent(_checkpointsDir);
-        if (_modelAlreadyPresent) return;
+        if (_modelAlreadyPresent) { StateHasChanged(); return; }
 
         var (gitOk, gitError) = await DownloadSvc.CheckGitAsync();
-        if (!gitOk) { _preCheckError = gitError; return; }
+        if (!gitOk) { _preCheckError = gitError; StateHasChanged(); return; }
 
         var (lfsOk, lfsError) = await DownloadSvc.CheckGitLfsAsync();
-        if (!lfsOk) { _preCheckError = lfsError; return; }
+        if (!lfsOk) { _preCheckError = lfsError; }
+        StateHasChanged();
     }
 
     private void StartModelDownload()
@@ -515,9 +516,10 @@
         _preCheckError = null;
 
         var (dockerOk, dockerError) = await DownloadSvc.CheckDockerAsync();
-        if (!dockerOk) { _preCheckError = dockerError; return; }
+        if (!dockerOk) { _preCheckError = dockerError; StateHasChanged(); return; }
 
         _dockerImagePresent = await DownloadSvc.IsDockerImagePresentAsync(_imageTag);
+        StateHasChanged();
     }
 
     private void StartDockerPull()
