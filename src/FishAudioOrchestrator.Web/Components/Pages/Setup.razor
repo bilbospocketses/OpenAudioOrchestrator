@@ -1,5 +1,6 @@
 @page "/setup"
 @using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
 @using System.Text.RegularExpressions
 @inject UserManager<AppUser> UserManager
 @inject RoleManager<IdentityRole> RoleManager
@@ -405,13 +406,12 @@
         public string ConfirmPassword { get; set; } = "";
     }
 
-    protected override Task OnInitializedAsync()
+    protected override async Task OnInitializedAsync()
     {
-        if (UserManager.Users.Any())
+        if (await UserManager.Users.AnyAsync())
         {
             Nav.NavigateTo("/", forceLoad: true);
         }
-        return Task.CompletedTask;
     }
 
     // --- Step 1: Data Directories ---
