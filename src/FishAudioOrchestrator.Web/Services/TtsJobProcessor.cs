@@ -31,7 +31,7 @@ public class TtsJobProcessor : BackgroundService
         _docker = docker;
         _eventBus = eventBus;
         _logger = logger;
-        var dataRoot = config["FishOrchestrator:DataRoot"] ?? @"C:\MyFishAudioProj";
+        var dataRoot = config["FishOrchestrator:DataRoot"] ?? @"C:\MyOpenAudioProj";
         _outputPath = Path.Combine(dataRoot, "Output");
         _jobSignal = jobSignal;
     }

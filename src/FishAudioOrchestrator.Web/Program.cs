@@ -52,7 +52,7 @@ builder.Services.AddRateLimiter(options =>
 });
 
 // Data Protection (persistent key storage in DataRoot)
-var dataRoot = builder.Configuration["FishOrchestrator:DataRoot"] ?? @"C:\MyFishAudioProj";
+var dataRoot = builder.Configuration["FishOrchestrator:DataRoot"] ?? @"C:\MyOpenAudioProj";
 var dpKeysPath = Path.Combine(dataRoot, ".dp-keys");
 Directory.CreateDirectory(dpKeysPath);
 var dpBuilder = builder.Services.AddDataProtection()

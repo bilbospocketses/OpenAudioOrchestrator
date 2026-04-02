@@ -179,7 +179,7 @@ else
         if (!_isAdmin && log.UserId != _userId)
             return;
 
-        var dataRoot = Config["FishOrchestrator:DataRoot"] ?? @"C:\MyFishAudioProj";
+        var dataRoot = Config["FishOrchestrator:DataRoot"] ?? @"C:\MyOpenAudioProj";
         var outputRoot = Path.GetFullPath(Path.Combine(dataRoot, "Output"));
         var filePath = Path.GetFullPath(Path.Combine(outputRoot, log.OutputFileName));
 
