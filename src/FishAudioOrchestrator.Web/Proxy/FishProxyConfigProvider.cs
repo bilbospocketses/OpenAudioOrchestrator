@@ -7,6 +7,7 @@ public class FishProxyConfigProvider : IProxyConfigProvider
 {
     private volatile FishProxyConfig _config;
     private CancellationTokenSource _cts = new();
+    private readonly object _lock = new();
 
     public FishProxyConfigProvider()
     {
@@ -17,24 +18,32 @@ public class FishProxyConfigProvider : IProxyConfigProvider
 
     public virtual void UpdateDestination(string destinationUrl)
     {
-        var oldCts = _cts;
-        _cts = new CancellationTokenSource();
-
-        var destinations = new Dictionary<string, DestinationConfig>
+        CancellationTokenSource oldCts;
+        lock (_lock)
         {
-            ["active-model"] = new DestinationConfig { Address = destinationUrl }
-        };
+            oldCts = _cts;
+            _cts = new CancellationTokenSource();
 
-        _config = new FishProxyConfig(destinations, _cts.Token);
+            var destinations = new Dictionary<string, DestinationConfig>
+            {
+                ["active-model"] = new DestinationConfig { Address = destinationUrl }
+            };
+
+            _config = new FishProxyConfig(destinations, _cts.Token);
+        }
         oldCts.Cancel();
         oldCts.Dispose();
     }
 
     public virtual void ClearDestination()
     {
-        var oldCts = _cts;
-        _cts = new CancellationTokenSource();
-        _config = new FishProxyConfig(null, _cts.Token);
+        CancellationTokenSource oldCts;
+        lock (_lock)
+        {
+            oldCts = _cts;
+            _cts = new CancellationTokenSource();
+            _config = new FishProxyConfig(null, _cts.Token);
+        }
         oldCts.Cancel();
         oldCts.Dispose();
     }
