@@ -104,7 +104,7 @@ else
         EventBus.OnTtsNotification += OnTtsNotificationRaw;
     }
 
-    private async Task LoadPageAsync(DateTimeOffset? before = null)
+    private async Task LoadPageAsync(int? beforeId = null)
     {
         await using var db = await DbFactory.CreateDbContextAsync();
         IQueryable<GenerationLog> query = db.GenerationLogs
@@ -116,18 +116,18 @@ else
             query = query.Where(l => l.UserId == _userId);
         }
 
-        query = query.OrderByDescending(l => l.CreatedAt);
+        query = query.OrderByDescending(l => l.Id);
 
-        if (before.HasValue)
+        if (beforeId.HasValue)
         {
-            query = query.Where(l => l.CreatedAt < before.Value);
+            query = query.Where(l => l.Id < beforeId.Value);
         }
 
         var results = await query.Take(PageSize + 1).ToListAsync();
         _hasMore = results.Count > PageSize;
         if (_hasMore) results.RemoveAt(results.Count - 1);
 
-        if (before.HasValue)
+        if (beforeId.HasValue)
             _logs.AddRange(results);
         else
             _logs = results;
@@ -136,7 +136,7 @@ else
     private async Task LoadMoreAsync()
     {
         _loadingMore = true;
-        var cursor = _logs.Last().CreatedAt;
+        var cursor = _logs.Last().Id;
         await LoadPageAsync(cursor);
         _loadingMore = false;
     }

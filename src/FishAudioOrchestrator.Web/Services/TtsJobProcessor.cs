@@ -112,7 +112,7 @@ public class TtsJobProcessor : BackgroundService
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
         var job = await db.TtsJobs
-            .OrderBy(j => j.CreatedAt)
+            .OrderBy(j => j.Id)
             .FirstOrDefaultAsync(j => j.Status == TtsJobStatus.Queued, stoppingToken);
 
         if (job is null) return;

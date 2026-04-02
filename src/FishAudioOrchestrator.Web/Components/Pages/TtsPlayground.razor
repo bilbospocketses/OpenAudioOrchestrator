@@ -168,7 +168,7 @@ else
 
         _jobs = await db.TtsJobs
             .Where(j => j.UserId == userId && j.Status != TtsJobStatus.Completed)
-            .OrderBy(j => j.CreatedAt)
+            .OrderBy(j => j.Id)
             .ToListAsync();
 
         EventBus.OnContainerStatus += OnContainerStatusRaw;
