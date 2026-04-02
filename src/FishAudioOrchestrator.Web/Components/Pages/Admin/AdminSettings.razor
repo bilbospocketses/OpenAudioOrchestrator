@@ -18,13 +18,13 @@
             <div class="alert alert-danger">@_error</div>
         }
 
-        <div class="card bg-dark border-secondary mb-3">
+        <div class="card border-secondary mb-3">
             <div class="card-body">
                 <h5>HTTPS / Domain</h5>
                 <p class="text-muted">Configure a fully qualified domain name for automatic Let's Encrypt HTTPS. Changes require an application restart.</p>
                 <div class="mb-3">
                     <label class="form-label">FQDN</label>
-                    <InputText @bind-Value="_fqdn" class="form-control bg-dark text-light border-secondary"
+                    <InputText @bind-Value="_fqdn" class="form-control border-secondary"
                                placeholder="e.g. fish.example.com" />
                 </div>
                 <button class="btn btn-primary" @onclick="SaveFqdn" disabled="@_loading">

@@ -14,8 +14,8 @@
 
 <PageTitle>Setup — Fish Audio Orchestrator</PageTitle>
 
-<div class="d-flex justify-content-center align-items-center min-vh-100 bg-dark py-4">
-    <div class="card bg-dark text-light border-secondary" style="width: 600px;">
+<div class="d-flex justify-content-center align-items-center min-vh-100 py-4">
+    <div class="card border-secondary" style="width: 600px;">
         <div class="card-body">
             <h3 class="card-title text-center mb-2">Fish Audio Orchestrator Setup</h3>
             <p class="text-muted text-center mb-4">Step @_step of 7</p>
@@ -32,17 +32,17 @@
 
                 <div class="mb-3">
                     <label class="form-label">Checkpoints Directory</label>
-                    <input class="form-control bg-dark text-light border-secondary" @bind="_checkpointsDir" />
+                    <input class="form-control border-secondary" @bind="_checkpointsDir" />
                     <small class="text-muted">Model checkpoint files (e.g. s2-pro)</small>
                 </div>
                 <div class="mb-3">
                     <label class="form-label">References Directory</label>
-                    <input class="form-control bg-dark text-light border-secondary" @bind="_referencesDir" />
+                    <input class="form-control border-secondary" @bind="_referencesDir" />
                     <small class="text-muted">Voice reference audio samples for cloning</small>
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Output Directory</label>
-                    <input class="form-control bg-dark text-light border-secondary" @bind="_outputDir" />
+                    <input class="form-control border-secondary" @bind="_outputDir" />
                     <small class="text-muted">Generated speech audio files</small>
                 </div>
                 <button class="btn btn-primary w-100" @onclick="ValidateStep1">Next</button>
@@ -169,11 +169,11 @@
                 <div class="row mb-3">
                     <div class="col">
                         <label class="form-label">Start Port</label>
-                        <input type="number" class="form-control bg-dark text-light border-secondary" @bind="_portStart" />
+                        <input type="number" class="form-control border-secondary" @bind="_portStart" />
                     </div>
                     <div class="col">
                         <label class="form-label">End Port</label>
-                        <input type="number" class="form-control bg-dark text-light border-secondary" @bind="_portEnd" />
+                        <input type="number" class="form-control border-secondary" @bind="_portEnd" />
                     </div>
                 </div>
 
@@ -182,7 +182,7 @@
                 <div class="mb-3">
                     <label class="form-label">Database Encryption Key</label>
                     <div class="input-group">
-                        <input class="form-control bg-dark text-light border-secondary" @bind="_databaseKey"
+                        <input class="form-control border-secondary" @bind="_databaseKey"
                                placeholder="Leave blank to skip encryption" />
                         <button type="button" class="btn btn-outline-light" @onclick="GenerateDatabaseKey">Generate</button>
                     </div>
@@ -207,14 +207,14 @@
                 <p class="text-muted small">By default, the app runs on port 5206 over HTTP. If you have a domain name pointing to this server and want automatic HTTPS via Let's Encrypt, enter it below. Otherwise, leave blank.</p>
                 <div class="mb-3">
                     <label class="form-label">Domain</label>
-                    <input class="form-control bg-dark text-light border-secondary" @bind="_domain" placeholder="e.g. fish.example.com" />
+                    <input class="form-control border-secondary" @bind="_domain" placeholder="e.g. fish.example.com" />
                 </div>
 
                 @if (!string.IsNullOrWhiteSpace(_domain))
                 {
                     <div class="mb-3">
                         <label class="form-label">Email Address (required for Let's Encrypt)</label>
-                        <input class="form-control bg-dark text-light border-secondary" @bind="_email" placeholder="admin@example.com" />
+                        <input class="form-control border-secondary" @bind="_email" placeholder="admin@example.com" />
                     </div>
                     <div class="alert alert-info small">
                         <strong>Important:</strong> After setup, restart the app and navigate to <strong>https://@_domain</strong>.
@@ -239,20 +239,20 @@
                 <EditForm Model="_adminModel" OnValidSubmit="CreateAdmin" FormName="setup-admin">
                     <div class="mb-3">
                         <label class="form-label">Username</label>
-                        <InputText @bind-Value="_adminModel.Username" class="form-control bg-dark text-light border-secondary" />
+                        <InputText @bind-Value="_adminModel.Username" class="form-control border-secondary" />
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Display Name</label>
-                        <InputText @bind-Value="_adminModel.DisplayName" class="form-control bg-dark text-light border-secondary" />
+                        <InputText @bind-Value="_adminModel.DisplayName" class="form-control border-secondary" />
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Password</label>
-                        <InputText @bind-Value="_adminModel.Password" type="password" class="form-control bg-dark text-light border-secondary" />
+                        <InputText @bind-Value="_adminModel.Password" type="password" class="form-control border-secondary" />
                         <div class="form-text text-muted">8+ characters, upper, lower, digit, special character.</div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Confirm Password</label>
-                        <InputText @bind-Value="_adminModel.ConfirmPassword" type="password" class="form-control bg-dark text-light border-secondary" />
+                        <InputText @bind-Value="_adminModel.ConfirmPassword" type="password" class="form-control border-secondary" />
                     </div>
                     <button type="submit" class="btn btn-primary w-100">Next</button>
                 </EditForm>
@@ -270,13 +270,13 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Manual Key</label>
-                        <input type="text" readonly class="form-control bg-dark text-light border-secondary text-center" value="@_manualKey" />
+                        <input type="text" readonly class="form-control border-secondary text-center" value="@_manualKey" />
                     </div>
                 }
 
                 <div class="mb-3">
                     <label class="form-label">Enter 6-digit code to verify</label>
-                    <InputText @bind-Value="_totpCode" class="form-control bg-dark text-light border-secondary text-center" maxlength="6" />
+                    <InputText @bind-Value="_totpCode" class="form-control border-secondary text-center" maxlength="6" />
                 </div>
                 <button class="btn btn-primary w-100" @onclick="VerifyTotpAndComplete" disabled="@_loading">
                     @(_loading ? "Completing setup..." : "Complete Setup")
@@ -332,10 +332,10 @@
                         <p><strong>TOTP:</strong> Enabled</p>
                     </div>
 
-                    <div class="card bg-dark border-secondary mb-3">
+                    <div class="card border-secondary mb-3">
                         <div class="card-body">
                             <p>Stop the application (<code>Ctrl+C</code> in the terminal) and restart with:</p>
-                            <pre class="bg-dark text-info p-2 rounded">dotnet run --project src/FishAudioOrchestrator.Web</pre>
+                            <pre class="text-info p-2 rounded">dotnet run --project src/FishAudioOrchestrator.Web</pre>
                             @if (!string.IsNullOrWhiteSpace(_domain))
                             {
                                 <p>Then navigate to <strong>https://@_domain</strong></p>

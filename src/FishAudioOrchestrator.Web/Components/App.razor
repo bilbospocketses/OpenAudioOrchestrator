@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -19,6 +19,12 @@
             document.getElementById('signin-token').value = token;
             document.getElementById('signin-return-url').value = returnUrl || '';
             document.getElementById('signin-form').submit();
+        };
+        window.setTheme = function(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+        };
+        window.getTheme = function() {
+            return document.documentElement.getAttribute('data-theme') || 'dark';
         };
     </script>
 </body>

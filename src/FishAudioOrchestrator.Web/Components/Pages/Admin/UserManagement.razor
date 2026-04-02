@@ -59,24 +59,24 @@
     <div class="col-md-4">
         @if (_showCreateForm)
         {
-            <div class="card bg-dark border-secondary">
+            <div class="card border-secondary">
                 <div class="card-body">
                     <h5>Create User</h5>
                     <div class="mb-2">
                         <label class="form-label">Username</label>
-                        <InputText @bind-Value="_createModel.Username" class="form-control bg-dark text-light border-secondary" />
+                        <InputText @bind-Value="_createModel.Username" class="form-control border-secondary" />
                     </div>
                     <div class="mb-2">
                         <label class="form-label">Display Name</label>
-                        <InputText @bind-Value="_createModel.DisplayName" class="form-control bg-dark text-light border-secondary" />
+                        <InputText @bind-Value="_createModel.DisplayName" class="form-control border-secondary" />
                     </div>
                     <div class="mb-2">
                         <label class="form-label">Temporary Password</label>
-                        <InputText @bind-Value="_createModel.Password" type="password" class="form-control bg-dark text-light border-secondary" />
+                        <InputText @bind-Value="_createModel.Password" type="password" class="form-control border-secondary" />
                     </div>
                     <div class="mb-2">
                         <label class="form-label">Role</label>
-                        <InputSelect @bind-Value="_createModel.Role" class="form-select bg-dark text-light border-secondary">
+                        <InputSelect @bind-Value="_createModel.Role" class="form-select border-secondary">
                             <option value="User">User</option>
                             <option value="Admin">Admin</option>
                         </InputSelect>
@@ -88,16 +88,16 @@
         }
         else if (_editUser is not null)
         {
-            <div class="card bg-dark border-secondary">
+            <div class="card border-secondary">
                 <div class="card-body">
                     <h5>Edit: @_editUser.UserName</h5>
                     <div class="mb-2">
                         <label class="form-label">Display Name</label>
-                        <InputText @bind-Value="_editDisplayName" class="form-control bg-dark text-light border-secondary" />
+                        <InputText @bind-Value="_editDisplayName" class="form-control border-secondary" />
                     </div>
                     <div class="mb-2">
                         <label class="form-label">Role</label>
-                        <InputSelect @bind-Value="_editRole" class="form-select bg-dark text-light border-secondary">
+                        <InputSelect @bind-Value="_editRole" class="form-select border-secondary">
                             <option value="User">User</option>
                             <option value="Admin">Admin</option>
                         </InputSelect>
@@ -109,12 +109,12 @@
         }
         else if (_resetUser is not null)
         {
-            <div class="card bg-dark border-secondary">
+            <div class="card border-secondary">
                 <div class="card-body">
                     <h5>Reset Password: @_resetUser.UserName</h5>
                     <div class="mb-2">
                         <label class="form-label">New Temporary Password</label>
-                        <InputText @bind-Value="_resetPassword" type="password" class="form-control bg-dark text-light border-secondary" />
+                        <InputText @bind-Value="_resetPassword" type="password" class="form-control border-secondary" />
                     </div>
                     <button class="btn btn-warning" @onclick="ResetPassword">Reset</button>
                     <button class="btn btn-secondary" @onclick="() => _resetUser = null">Cancel</button>
