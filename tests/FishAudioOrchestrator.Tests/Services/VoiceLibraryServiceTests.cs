@@ -90,6 +90,14 @@ public class VoiceLibraryServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task AddVoiceAsync_RejectsPathTraversal()
+    {
+        using var stream = new MemoryStream(new byte[] { 1, 2, 3 });
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => _service.AddVoiceAsync("test", "../escape", stream, "text"));
+    }
+
+    [Fact]
     public async Task UpdateVoiceAsync_UpdatesMetadata()
     {
         _context.ReferenceVoices.Add(new ReferenceVoice
