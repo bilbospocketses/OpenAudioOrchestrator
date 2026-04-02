@@ -28,26 +28,43 @@
             {
                 @* --- Step 1: Data Directories --- *@
                 <h5>Data Storage</h5>
-                <p class="text-muted">Fish Audio Orchestrator stores its database, model checkpoints, reference voice samples, and generated audio files. Choose where to store each. Directories will be created if they don't exist.</p>
+                <p class="text-muted">Choose a root directory for all application data. Subdirectory names and the database filename can be customized below.</p>
 
                 <div class="mb-3">
-                    <label class="form-label">Database File</label>
-                    <input class="form-control border-secondary" @bind="_databasePath" />
-                    <small class="text-muted">SQLite database file path (e.g. fishorch.db)</small>
+                    <label class="form-label">Root Directory</label>
+                    <input class="form-control border-secondary" @bind="_rootDir" />
+                    <small class="text-muted">All data will be stored under this directory</small>
                 </div>
                 <div class="mb-3">
-                    <label class="form-label">Checkpoints Directory</label>
-                    <input class="form-control border-secondary" @bind="_checkpointsDir" />
+                    <label class="form-label">Database Filename</label>
+                    <div class="input-group">
+                        <span class="input-group-text" style="background-color: var(--bg-surface-alt); color: var(--text-secondary); border-color: var(--border-color);">@(_rootDir.TrimEnd('\\', '/') + Path.DirectorySeparatorChar)</span>
+                        <input class="form-control border-secondary" @bind="_dbFileName" />
+                    </div>
+                    <small class="text-muted">SQLite database file</small>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Checkpoints Folder</label>
+                    <div class="input-group">
+                        <span class="input-group-text" style="background-color: var(--bg-surface-alt); color: var(--text-secondary); border-color: var(--border-color);">@(_rootDir.TrimEnd('\\', '/') + Path.DirectorySeparatorChar)</span>
+                        <input class="form-control border-secondary" @bind="_checkpointsFolderName" />
+                    </div>
                     <small class="text-muted">Model checkpoint files (e.g. s2-pro)</small>
                 </div>
                 <div class="mb-3">
-                    <label class="form-label">References Directory</label>
-                    <input class="form-control border-secondary" @bind="_referencesDir" />
+                    <label class="form-label">References Folder</label>
+                    <div class="input-group">
+                        <span class="input-group-text" style="background-color: var(--bg-surface-alt); color: var(--text-secondary); border-color: var(--border-color);">@(_rootDir.TrimEnd('\\', '/') + Path.DirectorySeparatorChar)</span>
+                        <input class="form-control border-secondary" @bind="_referencesFolderName" />
+                    </div>
                     <small class="text-muted">Voice reference audio samples for cloning</small>
                 </div>
                 <div class="mb-3">
-                    <label class="form-label">Output Directory</label>
-                    <input class="form-control border-secondary" @bind="_outputDir" />
+                    <label class="form-label">Output Folder</label>
+                    <div class="input-group">
+                        <span class="input-group-text" style="background-color: var(--bg-surface-alt); color: var(--text-secondary); border-color: var(--border-color);">@(_rootDir.TrimEnd('\\', '/') + Path.DirectorySeparatorChar)</span>
+                        <input class="form-control border-secondary" @bind="_outputFolderName" />
+                    </div>
                     <small class="text-muted">Generated speech audio files</small>
                 </div>
                 <button class="btn btn-primary w-100" @onclick="ValidateStep1">Next</button>
@@ -367,10 +384,17 @@
     private bool _loading;
 
     // Step 1
-    private string _databasePath = @"C:\MyOpenAudioProj\fishorch.db";
-    private string _checkpointsDir = @"C:\MyOpenAudioProj\Checkpoints";
-    private string _referencesDir = @"C:\MyOpenAudioProj\References";
-    private string _outputDir = @"C:\MyOpenAudioProj\Output";
+    private string _rootDir = @"C:\MyOpenAudioProj";
+    private string _dbFileName = "fishorch.db";
+    private string _checkpointsFolderName = "Checkpoints";
+    private string _referencesFolderName = "References";
+    private string _outputFolderName = "Output";
+
+    // Computed full paths from root + folder names
+    private string _databasePath => Path.Combine(_rootDir.Trim(), _dbFileName.Trim());
+    private string _checkpointsDir => Path.Combine(_rootDir.Trim(), _checkpointsFolderName.Trim());
+    private string _referencesDir => Path.Combine(_rootDir.Trim(), _referencesFolderName.Trim());
+    private string _outputDir => Path.Combine(_rootDir.Trim(), _outputFolderName.Trim());
 
     // Step 2
     private bool _modelAlreadyPresent;
@@ -427,49 +451,55 @@
     {
         _error = null;
 
-        if (string.IsNullOrWhiteSpace(_databasePath) ||
-            string.IsNullOrWhiteSpace(_checkpointsDir) ||
-            string.IsNullOrWhiteSpace(_referencesDir) ||
-            string.IsNullOrWhiteSpace(_outputDir))
+        if (string.IsNullOrWhiteSpace(_rootDir))
         {
-            _error = "All fields are required.";
+            _error = "Root directory is required.";
             return;
         }
 
-        _databasePath = _databasePath.Trim();
-
-        // Validate database path has a filename
-        if (string.IsNullOrWhiteSpace(Path.GetFileName(_databasePath)))
+        if (string.IsNullOrWhiteSpace(_dbFileName))
         {
-            _error = "Database path must include a filename (e.g. fishorch.db).";
+            _error = "Database filename is required.";
             return;
         }
 
-        // Ensure the database directory exists
-        var dbDir = Path.GetDirectoryName(Path.GetFullPath(_databasePath));
-        if (dbDir is not null)
+        if (string.IsNullOrWhiteSpace(_checkpointsFolderName) ||
+            string.IsNullOrWhiteSpace(_referencesFolderName) ||
+            string.IsNullOrWhiteSpace(_outputFolderName))
         {
-            try
-            {
-                if (!Directory.Exists(dbDir))
-                    Directory.CreateDirectory(dbDir);
-            }
-            catch (Exception ex)
-            {
-                _error = $"Could not create database directory '{dbDir}': {ex.Message}";
-                return;
-            }
-        }
-
-        var dirs = new[] { _checkpointsDir.Trim(), _referencesDir.Trim(), _outputDir.Trim() };
-        var normalized = dirs.Select(d => Path.GetFullPath(d).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).ToLowerInvariant()).ToArray();
-        if (normalized.Distinct().Count() != 3)
-        {
-            _error = "Each directory must be unique.";
+            _error = "All folder names are required.";
             return;
         }
 
-        foreach (var dir in dirs)
+        // Trim whitespace
+        _rootDir = _rootDir.Trim();
+        _dbFileName = _dbFileName.Trim();
+        _checkpointsFolderName = _checkpointsFolderName.Trim();
+        _referencesFolderName = _referencesFolderName.Trim();
+        _outputFolderName = _outputFolderName.Trim();
+
+        // Validate folder names are unique
+        var folderNames = new[] { _checkpointsFolderName, _referencesFolderName, _outputFolderName };
+        if (folderNames.Select(f => f.ToLowerInvariant()).Distinct().Count() != 3)
+        {
+            _error = "Each folder name must be unique.";
+            return;
+        }
+
+        // Ensure root directory exists
+        try
+        {
+            if (!Directory.Exists(_rootDir))
+                Directory.CreateDirectory(_rootDir);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Could not create root directory '{_rootDir}': {ex.Message}";
+            return;
+        }
+
+        // Create subdirectories
+        foreach (var dir in new[] { _checkpointsDir, _referencesDir, _outputDir })
         {
             try
             {
@@ -482,10 +512,6 @@
                 return;
             }
         }
-
-        _checkpointsDir = dirs[0];
-        _referencesDir = dirs[1];
-        _outputDir = dirs[2];
 
         _modelAlreadyPresent = DownloadSvc.IsModelPresent(_checkpointsDir);
         _ = RunModelPreChecks();
