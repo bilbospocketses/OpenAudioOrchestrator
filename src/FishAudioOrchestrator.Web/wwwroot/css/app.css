@@ -238,20 +238,30 @@ a:hover {
 }
 
 /* File input — style the browser-native button to match the theme */
-input[type="file"].form-control::file-selector-button {
-    background-color: var(--bg-surface-alt);
-    color: var(--text-primary);
-    border-color: var(--border-color);
+[data-theme="dark"] input[type="file"].form-control::file-selector-button,
+[data-theme="dark"] .form-control::file-selector-button {
+    background-color: #3a3a3a !important;
+    color: #e0e0e0 !important;
+    border-color: #444 !important;
 }
 
-input[type="file"].form-control:hover::file-selector-button {
-    background-color: #4a4a4a;
-    color: var(--text-primary);
+[data-theme="dark"] input[type="file"].form-control:hover::file-selector-button,
+[data-theme="dark"] .form-control:hover::file-selector-button {
+    background-color: #4a4a4a !important;
+    color: #e0e0e0 !important;
 }
 
-[data-theme="light"] input[type="file"].form-control:hover::file-selector-button {
+[data-theme="light"] input[type="file"].form-control::file-selector-button,
+[data-theme="light"] .form-control::file-selector-button {
+    background-color: #e9ecef;
+    color: #1a1a1a;
+    border-color: #ddd;
+}
+
+[data-theme="light"] input[type="file"].form-control:hover::file-selector-button,
+[data-theme="light"] .form-control:hover::file-selector-button {
     background-color: #ddd;
-    color: var(--text-primary);
+    color: #1a1a1a;
 }
 
 /* btn-outline-light — restyle to work on both themes */
