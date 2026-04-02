@@ -29,6 +29,7 @@ public class SetupSettingsService
     }
 
     public async Task SaveSettingsAsync(
+        string databasePath,
         string checkpointsDir,
         string referencesDir,
         string outputDir,
@@ -46,8 +47,8 @@ public class SetupSettingsService
         var dataRoot = Path.GetDirectoryName(checkpointsDir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
                        ?? checkpointsDir;
 
-        // ConnectionStrings
-        root["ConnectionStrings"]!["Default"] = $"Data Source={Path.Combine(dataRoot, "fishorch.db")}";
+        // ConnectionStrings — use the user-specified database path
+        root["ConnectionStrings"]!["Default"] = $"Data Source={Path.GetFullPath(databasePath)}";
 
         // FishOrchestrator
         var fish = root["FishOrchestrator"]!;
@@ -85,7 +86,12 @@ public class SetupSettingsService
     /// Encrypts an existing unencrypted SQLite database using SQLCipher.
     /// Creates an encrypted copy, then replaces the original.
     /// </summary>
-    public async Task EncryptDatabaseAsync(string dbPath, string key)
+    /// <summary>
+    /// Encrypts an unencrypted SQLite database file.
+    /// Accepts a pre-made unencrypted copy so the live DB file (held by EF Core) is not touched.
+    /// If <paramref name="unlockedCopyPath"/> is null, the method copies <paramref name="dbPath"/> itself.
+    /// </summary>
+    public async Task EncryptDatabaseAsync(string dbPath, string key, string? unlockedCopyPath = null)
     {
         if (!File.Exists(dbPath))
         {
@@ -93,48 +99,70 @@ public class SetupSettingsService
             return;
         }
 
-        var tempPath = dbPath + ".encrypting";
+        var sourcePath = unlockedCopyPath ?? dbPath;
+        var encryptedPath = dbPath + ".encrypted";
         try
         {
-            // Open the existing unencrypted database
-            using var source = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+            // If no unlocked copy was provided, make one so we don't fight EF Core's file lock
+            if (unlockedCopyPath is null)
+            {
+                sourcePath = dbPath + ".unencrypted-copy";
+                // Clear pools first so the copy gets a consistent snapshot
+                Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+                await Task.Delay(500);
+                File.Copy(dbPath, sourcePath, overwrite: true);
+            }
+
+            // Open the unencrypted copy and export to an encrypted file
+            // using SQLCipher's ATTACH + sqlcipher_export approach.
+            using var source = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={sourcePath}");
             await source.OpenAsync();
 
-            // Create a new encrypted database
-            using var dest = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={tempPath};Password={key}");
-            await dest.OpenAsync();
+            using (var cmd = source.CreateCommand())
+            {
+                cmd.CommandText = $"ATTACH DATABASE '{encryptedPath.Replace("'", "''")}' AS encrypted KEY '{key.Replace("'", "''")}';";
+                await cmd.ExecuteNonQueryAsync();
+            }
 
-            // Copy all data from unencrypted to encrypted
-            source.BackupDatabase(dest);
+            using (var cmd = source.CreateCommand())
+            {
+                cmd.CommandText = "SELECT sqlcipher_export('encrypted');";
+                await cmd.ExecuteNonQueryAsync();
+            }
 
-            dest.Close();
+            using (var cmd = source.CreateCommand())
+            {
+                cmd.CommandText = "DETACH DATABASE encrypted;";
+                await cmd.ExecuteNonQueryAsync();
+            }
+
             source.Close();
 
-            // Replace the original with the encrypted version
-            var backupPath = dbPath + ".unencrypted.bak";
-            File.Move(dbPath, backupPath, overwrite: true);
-            File.Move(tempPath, dbPath);
+            // Now swap: clear pools again so EF Core releases the live file, then replace it
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            await Task.Delay(500);
 
-            // Remove WAL/SHM journal files from the unencrypted DB
+            File.Move(encryptedPath, dbPath, overwrite: true);
+
+            // Remove WAL/SHM journal files
             var walPath = dbPath + "-wal";
             var shmPath = dbPath + "-shm";
             if (File.Exists(walPath)) File.Delete(walPath);
             if (File.Exists(shmPath)) File.Delete(shmPath);
-
-            // Delete the unencrypted backup
-            File.Delete(backupPath);
 
             _logger.LogInformation("Database encrypted successfully at {Path}", dbPath);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to encrypt database at {Path}", dbPath);
-
-            // Clean up temp file on failure
-            if (File.Exists(tempPath))
-                try { File.Delete(tempPath); } catch { }
-
             throw;
+        }
+        finally
+        {
+            // Clean up temp files
+            if (unlockedCopyPath is null && sourcePath != dbPath)
+                try { if (File.Exists(sourcePath)) File.Delete(sourcePath); } catch { }
+            try { if (File.Exists(encryptedPath)) File.Delete(encryptedPath); } catch { }
         }
     }
 }

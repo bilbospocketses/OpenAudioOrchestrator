@@ -140,4 +140,20 @@ public class MiddlewarePipelineTests : IClassFixture<CustomWebApplicationFactory
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         Assert.Contains("/login", response.Headers.Location!.OriginalString);
     }
+
+    [Fact]
+    public async Task SecurityHeaders_ContainStrictCsp()
+    {
+        var client = await _factory.CreateAuthenticatedClientAsync();
+        var response = await client.GetAsync("/");
+
+        var csp = response.Headers.GetValues("Content-Security-Policy").FirstOrDefault();
+        Assert.NotNull(csp);
+        Assert.Contains("default-src 'self'", csp);
+        Assert.Contains("script-src 'self' 'unsafe-inline'", csp);
+        Assert.Contains("frame-ancestors 'none'", csp);
+        Assert.Contains("base-uri 'self'", csp);
+        Assert.Contains("form-action 'self'", csp);
+        Assert.DoesNotContain("unsafe-eval", csp);
+    }
 }

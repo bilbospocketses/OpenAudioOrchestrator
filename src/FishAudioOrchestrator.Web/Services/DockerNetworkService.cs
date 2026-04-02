@@ -7,11 +7,13 @@ namespace FishAudioOrchestrator.Web.Services;
 public class DockerNetworkService : IDockerNetworkService
 {
     private readonly IDockerClient _docker;
+    private readonly ILogger<DockerNetworkService> _logger;
     public string NetworkName { get; }
 
-    public DockerNetworkService(IDockerClient docker, IConfiguration config)
+    public DockerNetworkService(IDockerClient docker, IConfiguration config, ILogger<DockerNetworkService> logger)
     {
         _docker = docker;
+        _logger = logger;
         NetworkName = config["FishOrchestrator:DockerNetworkName"] ?? "fish-orchestrator";
     }
 
@@ -36,6 +38,13 @@ public class DockerNetworkService : IDockerNetworkService
 
     public async Task<string?> GetContainerIpAsync(string containerId)
     {
+        if (!ContainerIdValidator.IsValid(containerId))
+        {
+            _logger.LogWarning(
+                "Skipping IP lookup: invalid container ID format '{ContainerId}'", containerId);
+            return null;
+        }
+
         var inspect = await _docker.Containers.InspectContainerAsync(containerId);
 
         if (inspect.NetworkSettings?.Networks != null &&

@@ -1,5 +1,4 @@
 using System.Text;
-using System.Text.RegularExpressions;
 using Docker.DotNet;
 using Docker.DotNet.Models;
 using FishAudioOrchestrator.Web.Data;
@@ -9,50 +8,37 @@ using Microsoft.EntityFrameworkCore;
 
 namespace FishAudioOrchestrator.Web.Services;
 
-public partial class TtsJobProcessor : BackgroundService
+public class TtsJobProcessor : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IDockerClient _docker;
     private readonly OrchestratorEventBus _eventBus;
     private readonly ILogger<TtsJobProcessor> _logger;
     private readonly string _outputPath;
-    private static readonly TimeSpan JobTimeout = TimeSpan.FromHours(2);
+    private readonly TtsJobSignal _jobSignal;
+    private static readonly TimeSpan JobTimeout = TimeSpan.FromHours(5);
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(5);
-
-    [GeneratedRegex(@"^[a-f0-9]{12,64}$")]
-    private static partial Regex ValidContainerIdRegex();
 
     public TtsJobProcessor(
         IServiceScopeFactory scopeFactory,
         IDockerClient docker,
         OrchestratorEventBus eventBus,
         ILogger<TtsJobProcessor> logger,
-        IConfiguration config)
+        IConfiguration config,
+        TtsJobSignal jobSignal)
     {
         _scopeFactory = scopeFactory;
         _docker = docker;
         _eventBus = eventBus;
         _logger = logger;
-        var dataRoot = config["FishOrchestrator:DataRoot"] ?? @"C:\MyFishAudioProj";
+        var dataRoot = config["FishOrchestrator:DataRoot"] ?? @"C:\MyOpenAudioProj";
         _outputPath = Path.Combine(dataRoot, "Output");
-    }
-
-    private static readonly SemaphoreSlim _jobSignal = new(0);
-
-    /// <summary>
-    /// Signal the processor that a new job has been queued.
-    /// Called from the UI after inserting a TtsJob.
-    /// </summary>
-    public static void SignalNewJob()
-    {
-        // Release is safe to call even if no one is waiting;
-        // the semaphore count just increments.
-        _jobSignal.Release();
+        _jobSignal = jobSignal;
     }
 
     private static void ValidateContainerId(string containerId)
     {
-        if (!ValidContainerIdRegex().IsMatch(containerId))
+        if (!ContainerIdValidator.IsValid(containerId))
             throw new ArgumentException($"Invalid container ID format: {containerId}");
     }
 
@@ -126,7 +112,7 @@ public partial class TtsJobProcessor : BackgroundService
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
         var job = await db.TtsJobs
-            .OrderBy(j => j.CreatedAt)
+            .OrderBy(j => j.Id)
             .FirstOrDefaultAsync(j => j.Status == TtsJobStatus.Queued, stoppingToken);
 
         if (job is null) return;
@@ -181,7 +167,7 @@ public partial class TtsJobProcessor : BackgroundService
                         "-H", "Content-Type: application/json",
                         "-d", $"@{containerRequestPath}",
                         "--output", containerOutputPath,
-                        "--max-time", "7200"
+                        "--max-time", "18000"
                     },
                     AttachStdout = true,
                     AttachStderr = true

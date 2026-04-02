@@ -53,8 +53,9 @@ public class HealthMonitorService : BackgroundService
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            await Task.Delay(TimeSpan.FromSeconds(_intervalSeconds), stoppingToken);
             await CheckHealthAsync();
+            try { await Task.Delay(TimeSpan.FromSeconds(_intervalSeconds), stoppingToken); }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
         }
     }
 
@@ -62,7 +63,6 @@ public class HealthMonitorService : BackgroundService
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
             try
             {
                 await CollectGpuMetricsAsync();
@@ -71,6 +71,8 @@ public class HealthMonitorService : BackgroundService
             {
                 _logger.LogWarning(ex, "GPU metrics collection failed");
             }
+            try { await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken); }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
         }
     }
 

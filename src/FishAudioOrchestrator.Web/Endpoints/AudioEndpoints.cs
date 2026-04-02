@@ -4,7 +4,7 @@ public static class AudioEndpoints
 {
     public static void MapAudioEndpoints(this WebApplication app)
     {
-        var dataRoot = app.Configuration["FishOrchestrator:DataRoot"] ?? @"C:\MyFishAudioProj";
+        var dataRoot = app.Configuration["FishOrchestrator:DataRoot"] ?? @"C:\MyOpenAudioProj";
         var outputRoot = Path.GetFullPath(Path.Combine(dataRoot, "Output"));
         var referencesRoot = Path.GetFullPath(Path.Combine(dataRoot, "References"));
 

@@ -2,7 +2,7 @@
 @implements IDisposable
 @inject GpuMetricsState GpuState
 
-<nav class="navbar navbar-expand navbar-dark bg-dark px-3">
+<nav class="navbar navbar-expand px-3">
     <a class="navbar-brand d-flex align-items-center" href="/">
         <img src="logo-nav.png" alt="" width="24" height="24" class="me-2" />
         Fish Audio Orchestrator
@@ -25,6 +25,9 @@
             </div>
             <div class="navbar-nav ms-auto">
                 <span class="nav-link text-muted" id="gpu-indicator">@_gpuInfo</span>
+                <button class="theme-toggle nav-link" @onclick="OnThemeToggle" title="Toggle theme">
+                    @(Theme == "dark" ? "Light" : "Dark")
+                </button>
                 <NavLink class="nav-link" href="/account">@context.User.Identity?.Name</NavLink>
             </div>
         </Authorized>
@@ -32,6 +35,9 @@
 </nav>
 
 @code {
+    [Parameter] public string Theme { get; set; } = "dark";
+    [Parameter] public EventCallback OnThemeToggle { get; set; }
+
     private string _gpuInfo = "GPU: loading...";
 
     protected override void OnInitialized()
@@ -49,7 +55,11 @@
             ? (int)(100.0 * GpuState.MemoryUsedMb / GpuState.MemoryTotalMb)
             : 0;
         _gpuInfo = $"Mem: {memPercent}%  Cores: {GpuState.UtilizationPercent}%";
-        InvokeAsync(StateHasChanged);
+        _ = InvokeAsync(() =>
+        {
+            try { StateHasChanged(); }
+            catch (ObjectDisposedException) { }
+        });
     }
 
     public void Dispose()

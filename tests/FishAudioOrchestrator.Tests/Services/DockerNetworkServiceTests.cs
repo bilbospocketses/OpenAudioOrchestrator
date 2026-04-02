@@ -2,6 +2,7 @@ using Docker.DotNet;
 using Docker.DotNet.Models;
 using FishAudioOrchestrator.Web.Services;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 
 namespace FishAudioOrchestrator.Tests.Services;
@@ -36,7 +37,7 @@ public class DockerNetworkServiceTests
 
         mockDocker.Setup(d => d.Networks).Returns(mockNetworks.Object);
 
-        var service = new DockerNetworkService(mockDocker.Object, CreateConfig());
+        var service = new DockerNetworkService(mockDocker.Object, CreateConfig(), NullLogger<DockerNetworkService>.Instance);
         var networkId = await service.EnsureNetworkExistsAsync();
 
         Assert.Equal("net-123", networkId);
@@ -62,7 +63,7 @@ public class DockerNetworkServiceTests
 
         mockDocker.Setup(d => d.Networks).Returns(mockNetworks.Object);
 
-        var service = new DockerNetworkService(mockDocker.Object, CreateConfig());
+        var service = new DockerNetworkService(mockDocker.Object, CreateConfig(), NullLogger<DockerNetworkService>.Instance);
         var networkId = await service.EnsureNetworkExistsAsync();
 
         Assert.Equal("existing-net", networkId);
@@ -78,7 +79,7 @@ public class DockerNetworkServiceTests
         var mockContainers = new Mock<IContainerOperations>();
 
         mockContainers.Setup(c => c.InspectContainerAsync(
-                "container-1", It.IsAny<CancellationToken>()))
+                "c0afe1234567", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ContainerInspectResponse
             {
                 NetworkSettings = new NetworkSettings
@@ -95,9 +96,29 @@ public class DockerNetworkServiceTests
 
         mockDocker.Setup(d => d.Containers).Returns(mockContainers.Object);
 
-        var service = new DockerNetworkService(mockDocker.Object, CreateConfig());
-        var ip = await service.GetContainerIpAsync("container-1");
+        var service = new DockerNetworkService(mockDocker.Object, CreateConfig(), NullLogger<DockerNetworkService>.Instance);
+        var ip = await service.GetContainerIpAsync("c0afe1234567");
 
         Assert.Equal("172.18.0.5", ip);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("not-a-valid-id")]
+    [InlineData("ABCDEF1234567890")]  // uppercase not allowed
+    [InlineData("short")]             // too short (< 12 hex chars)
+    public async Task GetContainerIpAsync_InvalidContainerId_ReturnsNullWithoutCallingDocker(string badId)
+    {
+        var mockDocker = new Mock<IDockerClient>();
+        var mockContainers = new Mock<IContainerOperations>();
+        mockDocker.Setup(d => d.Containers).Returns(mockContainers.Object);
+
+        var service = new DockerNetworkService(mockDocker.Object, CreateConfig(), NullLogger<DockerNetworkService>.Instance);
+        var ip = await service.GetContainerIpAsync(badId);
+
+        Assert.Null(ip);
+        mockContainers.Verify(c => c.InspectContainerAsync(
+            It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

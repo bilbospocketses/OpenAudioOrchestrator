@@ -112,14 +112,16 @@ public class AuthEndpointTests : IClassFixture<CustomWebApplicationFactory>, IAs
     }
 
     [Fact]
-    public async Task Signin_WithoutToken_Returns400()
+    public async Task Signin_WithoutToken_RedirectsToLoginError()
     {
         var client = _factory.CreateNonRedirectClient();
 
-        var response = await client.GetAsync("/api/auth/signin");
+        var form = new FormUrlEncodedContent(new Dictionary<string, string>());
+        var response = await client.PostAsync("/api/auth/signin", form);
 
-        // Missing required "token" query parameter
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        // Empty token should be treated as invalid
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Contains("error=invalid", response.Headers.Location!.OriginalString);
     }
 
     [Fact]
@@ -127,7 +129,11 @@ public class AuthEndpointTests : IClassFixture<CustomWebApplicationFactory>, IAs
     {
         var client = _factory.CreateNonRedirectClient();
 
-        var response = await client.GetAsync("/api/auth/signin?token=bogus-token-value");
+        var form = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["token"] = "bogus-token-value"
+        });
+        var response = await client.PostAsync("/api/auth/signin", form);
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         Assert.Contains("error=invalid", response.Headers.Location!.OriginalString);
@@ -145,7 +151,11 @@ public class AuthEndpointTests : IClassFixture<CustomWebApplicationFactory>, IAs
         cache.Set($"totp-verified:{token}", admin!.Id, TimeSpan.FromSeconds(60));
 
         var client = _factory.CreateNonRedirectClient();
-        var response = await client.GetAsync($"/api/auth/signin?token={token}");
+        var form = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["token"] = token
+        });
+        var response = await client.PostAsync("/api/auth/signin", form);
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         Assert.Equal("/", response.Headers.Location!.OriginalString);
@@ -165,12 +175,14 @@ public class AuthEndpointTests : IClassFixture<CustomWebApplicationFactory>, IAs
         var client = _factory.CreateNonRedirectClient();
 
         // First use — should succeed
-        var first = await client.GetAsync($"/api/auth/signin?token={token}");
+        var first = await client.PostAsync("/api/auth/signin", new FormUrlEncodedContent(
+            new Dictionary<string, string> { ["token"] = token }));
         Assert.Equal(HttpStatusCode.Redirect, first.StatusCode);
         Assert.Equal("/", first.Headers.Location!.OriginalString);
 
         // Second use — token consumed, should fail
-        var second = await client.GetAsync($"/api/auth/signin?token={token}");
+        var second = await client.PostAsync("/api/auth/signin", new FormUrlEncodedContent(
+            new Dictionary<string, string> { ["token"] = token }));
         Assert.Equal(HttpStatusCode.Redirect, second.StatusCode);
         Assert.Contains("error=invalid", second.Headers.Location!.OriginalString);
     }
@@ -187,8 +199,12 @@ public class AuthEndpointTests : IClassFixture<CustomWebApplicationFactory>, IAs
         cache.Set($"totp-verified:{token}", admin!.Id, TimeSpan.FromSeconds(60));
 
         var client = _factory.CreateNonRedirectClient();
-        var response = await client.GetAsync(
-            $"/api/auth/signin?token={token}&returnUrl=https://evil.com");
+        var form = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["token"] = token,
+            ["returnUrl"] = "https://evil.com"
+        });
+        var response = await client.PostAsync("/api/auth/signin", form);
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         Assert.Equal("/", response.Headers.Location!.OriginalString);
@@ -206,8 +222,12 @@ public class AuthEndpointTests : IClassFixture<CustomWebApplicationFactory>, IAs
         cache.Set($"totp-verified:{token}", admin!.Id, TimeSpan.FromSeconds(60));
 
         var client = _factory.CreateNonRedirectClient();
-        var response = await client.GetAsync(
-            $"/api/auth/signin?token={token}&returnUrl=//evil.com");
+        var form = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["token"] = token,
+            ["returnUrl"] = "//evil.com"
+        });
+        var response = await client.PostAsync("/api/auth/signin", form);
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         Assert.Equal("/", response.Headers.Location!.OriginalString);
@@ -225,8 +245,12 @@ public class AuthEndpointTests : IClassFixture<CustomWebApplicationFactory>, IAs
         cache.Set($"totp-verified:{token}", admin!.Id, TimeSpan.FromSeconds(60));
 
         var client = _factory.CreateNonRedirectClient();
-        var response = await client.GetAsync(
-            $"/api/auth/signin?token={token}&returnUrl=/playground");
+        var form = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["token"] = token,
+            ["returnUrl"] = "/playground"
+        });
+        var response = await client.PostAsync("/api/auth/signin", form);
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         Assert.Equal("/playground", response.Headers.Location!.OriginalString);

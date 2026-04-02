@@ -22,19 +22,19 @@
 
         @if (_user is not null)
         {
-            <div class="card bg-dark border-secondary mb-3">
+            <div class="card border-secondary mb-3">
                 <div class="card-body">
                     <h5>Display Name</h5>
                     <EditForm Model="_displayModel" OnValidSubmit="UpdateDisplayName" FormName="display-name">
                         <div class="input-group">
-                            <InputText @bind-Value="_displayModel.DisplayName" class="form-control bg-dark text-light border-secondary" />
+                            <InputText @bind-Value="_displayModel.DisplayName" class="form-control border-secondary" />
                             <button type="submit" class="btn btn-outline-primary">Save</button>
                         </div>
                     </EditForm>
                 </div>
             </div>
 
-            <div class="card bg-dark border-secondary mb-3">
+            <div class="card border-secondary mb-3">
                 <div class="card-body">
                     <h5>Security</h5>
                     <p>TOTP: <span class="badge bg-success">Enabled</span></p>
@@ -43,10 +43,11 @@
                 </div>
             </div>
 
-            <div class="card bg-dark border-secondary">
+            <div class="card border-secondary">
                 <div class="card-body">
                     <h5>Session</h5>
                     <form method="post" action="/api/auth/signout">
+                        <AntiforgeryToken />
                         <button type="submit" class="btn btn-outline-danger">Sign Out</button>
                     </form>
                 </div>

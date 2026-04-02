@@ -1,9 +1,12 @@
 using FishAudioOrchestrator.Web.Data.Entities;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Caching.Memory;
+using System.Security.Claims;
 using System.Security.Cryptography;
 
 namespace FishAudioOrchestrator.Web.Endpoints;
+
+public record ThemeRequest(string Theme);
 
 public static class AuthEndpoints
 {
@@ -44,13 +47,19 @@ public static class AuthEndpoints
             return Results.Redirect("/");
         }).RequireRateLimiting("auth");
 
-        app.MapGet("/api/auth/signin", async (
-            string token,
-            string? returnUrl,
+        app.MapPost("/api/auth/signin", async (
+            HttpContext httpContext,
             SignInManager<AppUser> signInManager,
             UserManager<AppUser> userManager,
             IMemoryCache cache) =>
         {
+            var form = await httpContext.Request.ReadFormAsync();
+            var token = form["token"].ToString();
+            var returnUrl = form["returnUrl"].ToString();
+
+            if (string.IsNullOrEmpty(token))
+                return Results.Redirect("/login?error=invalid");
+
             // Validate the one-time TOTP completion token
             var cacheKey = $"totp-verified:{token}";
             if (!cache.TryGetValue(cacheKey, out string? userId) || userId is null)
@@ -72,12 +81,42 @@ public static class AuthEndpoints
                 return Results.Redirect(returnUrl);
 
             return Results.Redirect("/");
-        });
+        }).RequireRateLimiting("auth");
 
         app.MapPost("/api/auth/signout", async (SignInManager<AppUser> signInManager) =>
         {
             await signInManager.SignOutAsync();
             return Results.Redirect("/login");
         });
+
+        app.MapPost("/api/auth/theme", async (
+            HttpContext httpContext,
+            ThemeRequest body,
+            UserManager<AppUser> userManager) =>
+        {
+            if (body.Theme != "dark" && body.Theme != "light")
+                return Results.BadRequest("Theme must be 'dark' or 'light'.");
+
+            var userId = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var user = await userManager.FindByIdAsync(userId!);
+            if (user is null)
+                return Results.Unauthorized();
+
+            user.ThemePreference = body.Theme;
+            await userManager.UpdateAsync(user);
+            return Results.Ok();
+        }).RequireAuthorization();
+
+        app.MapGet("/api/auth/theme", async (
+            HttpContext httpContext,
+            UserManager<AppUser> userManager) =>
+        {
+            var userId = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var user = await userManager.FindByIdAsync(userId!);
+            if (user is null)
+                return Results.Unauthorized();
+
+            return Results.Ok(new { theme = user.ThemePreference });
+        }).RequireAuthorization();
     }
 }

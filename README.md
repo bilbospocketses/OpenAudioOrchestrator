@@ -4,6 +4,8 @@
 
 # Fish Audio Orchestrator
 
+> **This project is an independent open-source tool and is not affiliated with, sponsored by, or endorsed by the Fish Audio team.**
+
 A local Blazor Server dashboard for managing Fish Speech Docker containers with voice cloning, TTS generation, and real-time monitoring.
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)

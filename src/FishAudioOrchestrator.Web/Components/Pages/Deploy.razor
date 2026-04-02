@@ -110,11 +110,12 @@
     private bool _isDeploying;
     private bool _modelPresent;
     private Timer? _deployDownloadTimer;
+    private CancellationTokenSource _disposeCts = new();
     private string? _error;
 
     protected override async Task OnInitializedAsync()
     {
-        var dataRoot = Config["FishOrchestrator:DataRoot"] ?? @"C:\MyFishAudioProj";
+        var dataRoot = Config["FishOrchestrator:DataRoot"] ?? @"C:\MyOpenAudioProj";
         var defaultImage = Config["FishOrchestrator:DefaultImageTag"] ?? "fishaudio/fish-speech:server-cuda";
 
         _form.CheckpointPath = Path.Combine(dataRoot, "Checkpoints", "s2-pro");
@@ -144,7 +145,7 @@
         }
 
         // Validate checkpoint path is within the Checkpoints directory
-        var dataRoot = Config["FishOrchestrator:DataRoot"] ?? @"C:\MyFishAudioProj";
+        var dataRoot = Config["FishOrchestrator:DataRoot"] ?? @"C:\MyOpenAudioProj";
         var checkpointsRoot = Path.GetFullPath(Path.Combine(dataRoot, "Checkpoints"));
         var resolvedPath = Path.GetFullPath(_form.CheckpointPath!);
         if (!resolvedPath.StartsWith(checkpointsRoot + Path.DirectorySeparatorChar)
@@ -199,21 +200,31 @@
     {
         var checkpointsParent = Path.GetDirectoryName(_form.CheckpointPath?.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) ?? "") ?? _form.CheckpointPath ?? "";
         DownloadSvc.StartModelDownload(checkpointsParent, () => InvokeAsync(StateHasChanged));
-        _deployDownloadTimer = new Timer(_ => InvokeAsync(() =>
+        _deployDownloadTimer = new Timer(_ =>
         {
-            if (!DownloadSvc.IsModelDownloading)
+            if (_disposeCts.IsCancellationRequested) return;
+            _ = InvokeAsync(() =>
             {
-                _deployDownloadTimer?.Dispose();
-                _modelPresent = DownloadSvc.ModelDownloadCompleted;
-            }
-            StateHasChanged();
-        }), null, 1000, 2000);
+                try
+                {
+                    if (!DownloadSvc.IsModelDownloading)
+                    {
+                        _deployDownloadTimer?.Dispose();
+                        _modelPresent = DownloadSvc.ModelDownloadCompleted;
+                    }
+                    StateHasChanged();
+                }
+                catch (ObjectDisposedException) { }
+            });
+        }, null, 1000, 2000);
     }
 
     private class DeployForm
     {
         [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Model name is required")]
         [System.ComponentModel.DataAnnotations.StringLength(100, MinimumLength = 1)]
+        [System.ComponentModel.DataAnnotations.RegularExpression(@"^[a-zA-Z0-9][a-zA-Z0-9_.-]*$",
+            ErrorMessage = "Name must start with a letter or digit and contain only letters, digits, underscores, dots, or hyphens.")]
         public string? Name { get; set; }
 
         [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Checkpoint path is required")]
@@ -229,6 +240,8 @@
 
     public ValueTask DisposeAsync()
     {
+        _disposeCts.Cancel();
+        _disposeCts.Dispose();
         _deployDownloadTimer?.Dispose();
         return ValueTask.CompletedTask;
     }

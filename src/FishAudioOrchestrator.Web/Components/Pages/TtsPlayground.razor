@@ -9,6 +9,8 @@
 @using Microsoft.AspNetCore.Identity
 @inject UserManager<AppUser> UserManager
 @inject OrchestratorEventBus EventBus
+@inject TtsJobSignal JobSignal
+@inject TtsJobProcessor JobProcessor
 @implements IAsyncDisposable
 
 <PageTitle>TTS Playground — Fish Audio Orchestrator</PageTitle>
@@ -166,7 +168,7 @@ else
 
         _jobs = await db.TtsJobs
             .Where(j => j.UserId == userId && j.Status != TtsJobStatus.Completed)
-            .OrderBy(j => j.CreatedAt)
+            .OrderBy(j => j.Id)
             .ToListAsync();
 
         EventBus.OnContainerStatus += OnContainerStatusRaw;
@@ -292,14 +294,25 @@ else
 
         _jobs.Add(job);
         _inputText = "";
-        TtsJobProcessor.SignalNewJob();
+        JobSignal.Signal();
     }
 
     private async Task CancelJob(TtsJob job)
     {
         await using var db = await DbFactory.CreateDbContextAsync();
-        db.TtsJobs.Remove(job);
-        await db.SaveChangesAsync();
+        var fresh = await db.TtsJobs.FindAsync(job.Id);
+        if (fresh is null) { _jobs.Remove(job); return; }
+
+        if (fresh.Status == TtsJobStatus.Processing)
+        {
+            // Job is actively running — delegate to processor which kills curl in the container
+            await JobProcessor.CancelJobAsync(job.Id);
+        }
+        else
+        {
+            db.TtsJobs.Remove(fresh);
+            await db.SaveChangesAsync();
+        }
         _jobs.Remove(job);
     }
 
@@ -317,7 +330,7 @@ else
 
         job.Status = TtsJobStatus.Queued;
         job.ErrorMessage = null;
-        TtsJobProcessor.SignalNewJob();
+        JobSignal.Signal();
     }
 
     private async Task DismissJob(TtsJob job)

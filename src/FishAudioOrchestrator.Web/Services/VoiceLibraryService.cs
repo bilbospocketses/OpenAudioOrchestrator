@@ -14,14 +14,17 @@ public class VoiceLibraryService : IVoiceLibraryService
     public VoiceLibraryService(IConfiguration config, AppDbContext context, IHttpClientFactory httpClientFactory)
     {
         var dataRoot = config["FishOrchestrator:DataRoot"]!;
-        _referencesPath = Path.Combine(dataRoot, "References");
+        _referencesPath = Path.GetFullPath(Path.Combine(dataRoot, "References"));
         _context = context;
         _httpClientFactory = httpClientFactory;
     }
 
     public async Task AddVoiceAsync(string displayName, string voiceId, Stream audioFile, string transcript, string? tags = null)
     {
-        var voiceDir = Path.Combine(_referencesPath, voiceId);
+        var voiceDir = Path.GetFullPath(Path.Combine(_referencesPath, voiceId));
+        if (!voiceDir.StartsWith(_referencesPath + Path.DirectorySeparatorChar))
+            throw new ArgumentException("Invalid voice ID.", nameof(voiceId));
+
         Directory.CreateDirectory(voiceDir);
 
         var wavPath = Path.Combine(voiceDir, "sample.wav");
@@ -68,7 +71,10 @@ public class VoiceLibraryService : IVoiceLibraryService
         var voice = await _context.ReferenceVoices.FindAsync(id)
             ?? throw new InvalidOperationException($"Voice with ID {id} not found");
 
-        var voiceDir = Path.Combine(_referencesPath, voice.VoiceId);
+        var voiceDir = Path.GetFullPath(Path.Combine(_referencesPath, voice.VoiceId));
+        if (!voiceDir.StartsWith(_referencesPath + Path.DirectorySeparatorChar))
+            throw new InvalidOperationException("Stored voice ID contains an invalid path.");
+
         if (Directory.Exists(voiceDir))
         {
             Directory.Delete(voiceDir, true);

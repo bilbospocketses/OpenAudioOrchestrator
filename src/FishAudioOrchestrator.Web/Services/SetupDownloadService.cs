@@ -72,7 +72,7 @@ public partial class SetupDownloadService
     {
         try
         {
-            var (exitCode, _) = await RunCommandAsync("git", "lfs version");
+            var (exitCode, _) = await RunCommandAsync("git", "lfs", "version");
             if (exitCode != 0)
                 return (false, "Git LFS is not installed. Run the following in PowerShell:\ngit lfs install\nThen click Retry.");
             return (true, null);
@@ -87,7 +87,7 @@ public partial class SetupDownloadService
     {
         try
         {
-            var (exitCode, _) = await RunCommandAsync("docker", "version --format '{{.Server.Version}}'");
+            var (exitCode, _) = await RunCommandAsync("docker", "version", "--format", "{{.Server.Version}}");
             if (exitCode != 0)
                 return (false, "Docker is not responding. Ensure Docker Desktop is installed and running.");
             return (true, null);
@@ -103,7 +103,7 @@ public partial class SetupDownloadService
         try
         {
             ValidateImageTag(imageTag);
-            var (exitCode, output) = await RunCommandAsync("docker", $"images -q {imageTag}");
+            var (exitCode, output) = await RunCommandAsync("docker", "images", "-q", imageTag);
             return exitCode == 0 && !string.IsNullOrWhiteSpace(output);
         }
         catch
@@ -133,7 +133,7 @@ public partial class SetupDownloadService
         var targetPath = Path.Combine(checkpointsDir, "s2-pro");
 
         _modelDownloadProcess = StartBackgroundProcess(
-            "git", $"clone https://huggingface.co/fishaudio/s2-pro \"{targetPath}\"",
+            "git", new[] { "clone", "https://huggingface.co/fishaudio/s2-pro", targetPath },
             _modelDownloadOutput,
             onOutput,
             exitCode =>
@@ -156,7 +156,7 @@ public partial class SetupDownloadService
         lock (_lock) { _dockerPullOutput.Clear(); }
 
         _dockerPullProcess = StartBackgroundProcess(
-            "docker", $"pull {imageTag}",
+            "docker", new[] { "pull", imageTag },
             _dockerPullOutput,
             onOutput,
             exitCode =>
@@ -181,7 +181,7 @@ public partial class SetupDownloadService
     // --- Internals ---
 
     private Process StartBackgroundProcess(
-        string fileName, string arguments,
+        string fileName, string[] args,
         List<string> outputBuffer,
         Action? onOutput,
         Action<int>? onExit)
@@ -189,12 +189,12 @@ public partial class SetupDownloadService
         var psi = new ProcessStartInfo
         {
             FileName = fileName,
-            Arguments = arguments,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true
         };
+        foreach (var arg in args) psi.ArgumentList.Add(arg);
 
         var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
 
@@ -226,17 +226,17 @@ public partial class SetupDownloadService
         return process;
     }
 
-    private static async Task<(int exitCode, string output)> RunCommandAsync(string fileName, string arguments)
+    private static async Task<(int exitCode, string output)> RunCommandAsync(string fileName, params string[] args)
     {
         var psi = new ProcessStartInfo
         {
             FileName = fileName,
-            Arguments = arguments,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true
         };
+        foreach (var arg in args) psi.ArgumentList.Add(arg);
 
         using var process = Process.Start(psi)!;
         var output = await process.StandardOutput.ReadToEndAsync();

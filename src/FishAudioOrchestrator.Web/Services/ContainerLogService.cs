@@ -25,6 +25,8 @@ public class ContainerLogService : IContainerLogService
 
     public Task SubscribeAsync(string containerId, string connectionId)
     {
+        if (!ContainerIdValidator.IsValid(containerId)) return Task.CompletedTask;
+
         var stream = _streams.GetOrAdd(containerId, _ => new ContainerLogStream());
 
         lock (stream.Lock)
@@ -43,6 +45,8 @@ public class ContainerLogService : IContainerLogService
 
     public Task UnsubscribeAsync(string containerId, string connectionId)
     {
+        if (!ContainerIdValidator.IsValid(containerId)) return Task.CompletedTask;
+
         if (!_streams.TryGetValue(containerId, out var stream))
             return Task.CompletedTask;
 
@@ -50,7 +54,8 @@ public class ContainerLogService : IContainerLogService
         lock (stream.Lock)
         {
             stream.Subscribers.Remove(connectionId);
-            shouldCancel = stream.Subscribers.Count == 0;
+            shouldCancel = stream.Subscribers.Count == 0
+                && !HasCallbackSubscribers(containerId);
         }
 
         if (shouldCancel)
@@ -70,7 +75,8 @@ public class ContainerLogService : IContainerLogService
             lock (kvp.Value.Lock)
             {
                 kvp.Value.Subscribers.Remove(connectionId);
-                shouldCancel = kvp.Value.Subscribers.Count == 0;
+                shouldCancel = kvp.Value.Subscribers.Count == 0
+                    && !HasCallbackSubscribers(kvp.Key);
             }
 
             if (shouldCancel)
@@ -103,6 +109,8 @@ public class ContainerLogService : IContainerLogService
 
     public void SubscribeCallback(string containerId, string subscriberId, Action<LogLineEvent> callback)
     {
+        if (!ContainerIdValidator.IsValid(containerId)) return;
+
         var subs = _callbackSubscribers.GetOrAdd(containerId, _ => new ConcurrentDictionary<string, Action<LogLineEvent>>());
         subs[subscriberId] = callback;
 
@@ -135,12 +143,20 @@ public class ContainerLogService : IContainerLogService
             }
         }
 
-        // If no subscribers of either kind remain, stop the reader
-        if (!HasSubscribers(containerId) && !HasCallbackSubscribers(containerId))
+        // Check if we should stop the reader — must check both subscriber types under the stream's lock
+        if (_streams.TryGetValue(containerId, out var stream))
         {
-            if (_streams.TryRemove(containerId, out var stream))
+            bool shouldCancel;
+            lock (stream.Lock)
+            {
+                shouldCancel = stream.Subscribers.Count == 0
+                    && !HasCallbackSubscribers(containerId);
+            }
+
+            if (shouldCancel)
             {
                 stream.Cts?.Cancel();
+                _streams.TryRemove(containerId, out _);
             }
         }
     }

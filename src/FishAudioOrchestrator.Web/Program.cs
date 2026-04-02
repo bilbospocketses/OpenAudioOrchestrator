@@ -52,12 +52,16 @@ builder.Services.AddRateLimiter(options =>
 });
 
 // Data Protection (persistent key storage in DataRoot)
-var dataRoot = builder.Configuration["FishOrchestrator:DataRoot"] ?? @"C:\MyFishAudioProj";
-var dpKeysPath = Path.Combine(dataRoot, ".dp-keys");
+var dataRoot = builder.Configuration["FishOrchestrator:DataRoot"] ?? @"C:\MyOpenAudioProj";
+// Store DP keys alongside the application, not in DataRoot (which can change during setup)
+var dpKeysPath = Path.Combine(builder.Environment.ContentRootPath, ".dp-keys");
 Directory.CreateDirectory(dpKeysPath);
-builder.Services.AddDataProtection()
+var dpBuilder = builder.Services.AddDataProtection()
     .SetApplicationName("FishAudioOrchestrator")
     .PersistKeysToFileSystem(new DirectoryInfo(dpKeysPath));
+if (OperatingSystem.IsWindows())
+    dpBuilder.ProtectKeysWithDpapi();
+
 
 // Build SQLite connection string (with optional SQLCipher encryption)
 var connectionString = builder.Configuration.GetConnectionString("Default")!;
@@ -67,9 +71,11 @@ if (!string.IsNullOrWhiteSpace(encryptedDbKey))
     // Decrypt the database key using Data Protection.
     // Build a temporary provider to access the protector before full DI is ready.
     var tempServices = new ServiceCollection();
-    tempServices.AddDataProtection()
+    var tempDpBuilder = tempServices.AddDataProtection()
         .SetApplicationName("FishAudioOrchestrator")
         .PersistKeysToFileSystem(new DirectoryInfo(dpKeysPath));
+    if (OperatingSystem.IsWindows())
+        tempDpBuilder.ProtectKeysWithDpapi();
 #pragma warning disable ASP0000 // Intentional: need DataProtection before full DI is built
     using var tempProvider = tempServices.BuildServiceProvider();
 #pragma warning restore ASP0000
@@ -82,9 +88,12 @@ if (!string.IsNullOrWhiteSpace(encryptedDbKey))
     }
     catch (Exception ex)
     {
-        // If decryption fails (e.g. key was stored in plain text before migration),
-        // try using the value directly as a fallback
-        Console.WriteLine($"Warning: Could not decrypt DatabaseKey ({ex.Message}). Trying as plain text.");
+        // Fallback: the key may have been stored as plaintext before DP encryption was introduced.
+        // Log prominently so operators notice if this happens unexpectedly.
+        var message = $"WARNING: Could not decrypt DatabaseKey ({ex.Message}). " +
+                      "Using value as plaintext. If the database fails to open, " +
+                      "the Data Protection keys may have been lost or rotated.";
+        Console.Error.WriteLine(message);
         connectionString += $";Password={encryptedDbKey}";
     }
 }
@@ -113,7 +122,11 @@ builder.Services.ConfigureApplicationCookie(opts =>
     opts.Cookie.Name = ".FishOrch.Auth";
     opts.Cookie.HttpOnly = true;
     opts.Cookie.SameSite = SameSiteMode.Strict;
-    opts.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+    // Use Always when an HTTPS domain is configured (production); fall back to
+    // SameAsRequest for localhost/HTTP development so the cookie still works over HTTP.
+    opts.Cookie.SecurePolicy = string.IsNullOrWhiteSpace(domain)
+        ? CookieSecurePolicy.SameAsRequest  // Localhost/development: allow HTTP
+        : CookieSecurePolicy.Always;        // Production with HTTPS domain
     opts.ExpireTimeSpan = TimeSpan.FromHours(24);
     opts.SlidingExpiration = true;
     opts.LoginPath = "/login";
@@ -141,14 +154,16 @@ builder.Services.AddScoped<IDockerOrchestratorService, DockerOrchestratorService
 builder.Services.AddScoped<IVoiceLibraryService, VoiceLibraryService>();
 builder.Services.AddHttpClient<ITtsClientService, TtsClientService>(client =>
 {
-    client.Timeout = Timeout.InfiniteTimeSpan;
+    client.Timeout = TimeSpan.FromHours(5); // Match TtsJobProcessor.JobTimeout
 });
 builder.Services.AddScoped<ITotpService, TotpService>();
 builder.Services.AddScoped<IAdminSeedService, AdminSeedService>();
 
 // Health monitoring
+builder.Services.AddSingleton<TtsJobSignal>();
 builder.Services.AddHostedService<HealthMonitorService>();
-builder.Services.AddHostedService<TtsJobProcessor>();
+builder.Services.AddSingleton<TtsJobProcessor>();
+builder.Services.AddHostedService<TtsJobProcessor>(sp => sp.GetRequiredService<TtsJobProcessor>());
 
 // SignalR
 builder.Services.AddSignalR();
@@ -180,7 +195,15 @@ app.Use(async (context, next) =>
     headers["X-Content-Type-Options"] = "nosniff";
     headers["X-Frame-Options"] = "DENY";
     headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
-    headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;";
+    headers["Content-Security-Policy"] =
+        "default-src 'self'; " +
+        "script-src 'self' 'unsafe-inline'; " +  // Required: Blazor Server injects inline scripts for circuit management
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; " + // Required: Blazor scoped CSS + Bootstrap CDN
+        "img-src 'self' data:; " +               // data: needed for TOTP QR codes
+        "connect-src 'self'; " +                 // WebSocket (SignalR) + fetch to same origin
+        "frame-ancestors 'none'; " +
+        "base-uri 'self'; " +
+        "form-action 'self'";
     await next();
 });
 
@@ -195,8 +218,10 @@ app.UseMiddleware<SetupGuardMiddleware>();
 app.UseMiddleware<PostLoginRedirectMiddleware>();
 
 // Endpoint mapping
-app.MapAudioEndpoints();
+// UseAntiforgery() MUST come before any endpoint mapping so that all mapped
+// endpoints (including future POST endpoints in MapAudioEndpoints) are covered.
 app.UseAntiforgery();
+app.MapAudioEndpoints();
 app.MapReverseProxy().RequireAuthorization();
 app.MapStaticAssets();
 app.MapRazorComponents<App>()

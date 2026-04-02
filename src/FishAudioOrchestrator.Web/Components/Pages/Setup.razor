@@ -1,5 +1,6 @@
 @page "/setup"
 @using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
 @using System.Text.RegularExpressions
 @inject UserManager<AppUser> UserManager
 @inject RoleManager<IdentityRole> RoleManager
@@ -13,8 +14,8 @@
 
 <PageTitle>Setup — Fish Audio Orchestrator</PageTitle>
 
-<div class="d-flex justify-content-center align-items-center min-vh-100 bg-dark py-4">
-    <div class="card bg-dark text-light border-secondary" style="width: 600px;">
+<div class="d-flex justify-content-center align-items-center min-vh-100 py-4">
+    <div class="card border-secondary" style="width: 600px;">
         <div class="card-body">
             <h3 class="card-title text-center mb-2">Fish Audio Orchestrator Setup</h3>
             <p class="text-muted text-center mb-4">Step @_step of 7</p>
@@ -27,21 +28,26 @@
             {
                 @* --- Step 1: Data Directories --- *@
                 <h5>Data Storage</h5>
-                <p class="text-muted">Fish Audio Orchestrator stores model checkpoints, reference voice samples, and generated audio files in separate directories. Choose where to store each. The directories will be created if they don't exist.</p>
+                <p class="text-muted">Fish Audio Orchestrator stores its database, model checkpoints, reference voice samples, and generated audio files. Choose where to store each. Directories will be created if they don't exist.</p>
 
                 <div class="mb-3">
+                    <label class="form-label">Database File</label>
+                    <input class="form-control border-secondary" @bind="_databasePath" />
+                    <small class="text-muted">SQLite database file path (e.g. fishorch.db)</small>
+                </div>
+                <div class="mb-3">
                     <label class="form-label">Checkpoints Directory</label>
-                    <input class="form-control bg-dark text-light border-secondary" @bind="_checkpointsDir" />
+                    <input class="form-control border-secondary" @bind="_checkpointsDir" />
                     <small class="text-muted">Model checkpoint files (e.g. s2-pro)</small>
                 </div>
                 <div class="mb-3">
                     <label class="form-label">References Directory</label>
-                    <input class="form-control bg-dark text-light border-secondary" @bind="_referencesDir" />
+                    <input class="form-control border-secondary" @bind="_referencesDir" />
                     <small class="text-muted">Voice reference audio samples for cloning</small>
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Output Directory</label>
-                    <input class="form-control bg-dark text-light border-secondary" @bind="_outputDir" />
+                    <input class="form-control border-secondary" @bind="_outputDir" />
                     <small class="text-muted">Generated speech audio files</small>
                 </div>
                 <button class="btn btn-primary w-100" @onclick="ValidateStep1">Next</button>
@@ -168,11 +174,11 @@
                 <div class="row mb-3">
                     <div class="col">
                         <label class="form-label">Start Port</label>
-                        <input type="number" class="form-control bg-dark text-light border-secondary" @bind="_portStart" />
+                        <input type="number" class="form-control border-secondary" @bind="_portStart" />
                     </div>
                     <div class="col">
                         <label class="form-label">End Port</label>
-                        <input type="number" class="form-control bg-dark text-light border-secondary" @bind="_portEnd" />
+                        <input type="number" class="form-control border-secondary" @bind="_portEnd" />
                     </div>
                 </div>
 
@@ -181,7 +187,7 @@
                 <div class="mb-3">
                     <label class="form-label">Database Encryption Key</label>
                     <div class="input-group">
-                        <input class="form-control bg-dark text-light border-secondary" @bind="_databaseKey"
+                        <input class="form-control border-secondary" @bind="_databaseKey"
                                placeholder="Leave blank to skip encryption" />
                         <button type="button" class="btn btn-outline-light" @onclick="GenerateDatabaseKey">Generate</button>
                     </div>
@@ -206,14 +212,14 @@
                 <p class="text-muted small">By default, the app runs on port 5206 over HTTP. If you have a domain name pointing to this server and want automatic HTTPS via Let's Encrypt, enter it below. Otherwise, leave blank.</p>
                 <div class="mb-3">
                     <label class="form-label">Domain</label>
-                    <input class="form-control bg-dark text-light border-secondary" @bind="_domain" placeholder="e.g. fish.example.com" />
+                    <input class="form-control border-secondary" @bind="_domain" placeholder="e.g. fish.example.com" />
                 </div>
 
                 @if (!string.IsNullOrWhiteSpace(_domain))
                 {
                     <div class="mb-3">
                         <label class="form-label">Email Address (required for Let's Encrypt)</label>
-                        <input class="form-control bg-dark text-light border-secondary" @bind="_email" placeholder="admin@example.com" />
+                        <input class="form-control border-secondary" @bind="_email" placeholder="admin@example.com" />
                     </div>
                     <div class="alert alert-info small">
                         <strong>Important:</strong> After setup, restart the app and navigate to <strong>https://@_domain</strong>.
@@ -238,20 +244,20 @@
                 <EditForm Model="_adminModel" OnValidSubmit="CreateAdmin" FormName="setup-admin">
                     <div class="mb-3">
                         <label class="form-label">Username</label>
-                        <InputText @bind-Value="_adminModel.Username" class="form-control bg-dark text-light border-secondary" />
+                        <InputText @bind-Value="_adminModel.Username" class="form-control border-secondary" />
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Display Name</label>
-                        <InputText @bind-Value="_adminModel.DisplayName" class="form-control bg-dark text-light border-secondary" />
+                        <InputText @bind-Value="_adminModel.DisplayName" class="form-control border-secondary" />
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Password</label>
-                        <InputText @bind-Value="_adminModel.Password" type="password" class="form-control bg-dark text-light border-secondary" />
+                        <InputText @bind-Value="_adminModel.Password" type="password" class="form-control border-secondary" />
                         <div class="form-text text-muted">8+ characters, upper, lower, digit, special character.</div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Confirm Password</label>
-                        <InputText @bind-Value="_adminModel.ConfirmPassword" type="password" class="form-control bg-dark text-light border-secondary" />
+                        <InputText @bind-Value="_adminModel.ConfirmPassword" type="password" class="form-control border-secondary" />
                     </div>
                     <button type="submit" class="btn btn-primary w-100">Next</button>
                 </EditForm>
@@ -269,13 +275,13 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Manual Key</label>
-                        <input type="text" readonly class="form-control bg-dark text-light border-secondary text-center" value="@_manualKey" />
+                        <input type="text" readonly class="form-control border-secondary text-center" value="@_manualKey" />
                     </div>
                 }
 
                 <div class="mb-3">
                     <label class="form-label">Enter 6-digit code to verify</label>
-                    <InputText @bind-Value="_totpCode" class="form-control bg-dark text-light border-secondary text-center" maxlength="6" />
+                    <InputText @bind-Value="_totpCode" class="form-control border-secondary text-center" maxlength="6" />
                 </div>
                 <button class="btn btn-primary w-100" @onclick="VerifyTotpAndComplete" disabled="@_loading">
                     @(_loading ? "Completing setup..." : "Complete Setup")
@@ -318,6 +324,7 @@
                 else
                 {
                     <div class="alert alert-success">
+                        <p><strong>Database:</strong> @Path.GetFullPath(_databasePath)</p>
                         <p><strong>Data directories:</strong> Configured</p>
                         <p><strong>Model:</strong> @(_modelSkipped ? "Skipped (download manually before deploying)" : "Downloaded")</p>
                         <p><strong>Docker image:</strong> @(DownloadSvc.DockerPullCompleted || _dockerImagePresent ? "Available" : "Not downloaded")</p>
@@ -331,10 +338,10 @@
                         <p><strong>TOTP:</strong> Enabled</p>
                     </div>
 
-                    <div class="card bg-dark border-secondary mb-3">
+                    <div class="card border-secondary mb-3">
                         <div class="card-body">
                             <p>Stop the application (<code>Ctrl+C</code> in the terminal) and restart with:</p>
-                            <pre class="bg-dark text-info p-2 rounded">dotnet run --project src/FishAudioOrchestrator.Web</pre>
+                            <pre class="text-info p-2 rounded">dotnet run --project src/FishAudioOrchestrator.Web</pre>
                             @if (!string.IsNullOrWhiteSpace(_domain))
                             {
                                 <p>Then navigate to <strong>https://@_domain</strong></p>
@@ -360,9 +367,10 @@
     private bool _loading;
 
     // Step 1
-    private string _checkpointsDir = @"C:\MyFishAudioProj\Checkpoints";
-    private string _referencesDir = @"C:\MyFishAudioProj\References";
-    private string _outputDir = @"C:\MyFishAudioProj\Output";
+    private string _databasePath = @"C:\MyOpenAudioProj\fishorch.db";
+    private string _checkpointsDir = @"C:\MyOpenAudioProj\Checkpoints";
+    private string _referencesDir = @"C:\MyOpenAudioProj\References";
+    private string _outputDir = @"C:\MyOpenAudioProj\Output";
 
     // Step 2
     private bool _modelAlreadyPresent;
@@ -405,13 +413,12 @@
         public string ConfirmPassword { get; set; } = "";
     }
 
-    protected override Task OnInitializedAsync()
+    protected override async Task OnInitializedAsync()
     {
-        if (UserManager.Users.Any())
+        if (await UserManager.Users.AnyAsync())
         {
             Nav.NavigateTo("/", forceLoad: true);
         }
-        return Task.CompletedTask;
     }
 
     // --- Step 1: Data Directories ---
@@ -420,12 +427,38 @@
     {
         _error = null;
 
-        if (string.IsNullOrWhiteSpace(_checkpointsDir) ||
+        if (string.IsNullOrWhiteSpace(_databasePath) ||
+            string.IsNullOrWhiteSpace(_checkpointsDir) ||
             string.IsNullOrWhiteSpace(_referencesDir) ||
             string.IsNullOrWhiteSpace(_outputDir))
         {
-            _error = "All three directories are required.";
+            _error = "All fields are required.";
             return;
+        }
+
+        _databasePath = _databasePath.Trim();
+
+        // Validate database path has a filename
+        if (string.IsNullOrWhiteSpace(Path.GetFileName(_databasePath)))
+        {
+            _error = "Database path must include a filename (e.g. fishorch.db).";
+            return;
+        }
+
+        // Ensure the database directory exists
+        var dbDir = Path.GetDirectoryName(Path.GetFullPath(_databasePath));
+        if (dbDir is not null)
+        {
+            try
+            {
+                if (!Directory.Exists(dbDir))
+                    Directory.CreateDirectory(dbDir);
+            }
+            catch (Exception ex)
+            {
+                _error = $"Could not create database directory '{dbDir}': {ex.Message}";
+                return;
+            }
         }
 
         var dirs = new[] { _checkpointsDir.Trim(), _referencesDir.Trim(), _outputDir.Trim() };
@@ -466,13 +499,14 @@
     {
         _preCheckError = null;
         _modelAlreadyPresent = DownloadSvc.IsModelPresent(_checkpointsDir);
-        if (_modelAlreadyPresent) return;
+        if (_modelAlreadyPresent) { StateHasChanged(); return; }
 
         var (gitOk, gitError) = await DownloadSvc.CheckGitAsync();
-        if (!gitOk) { _preCheckError = gitError; return; }
+        if (!gitOk) { _preCheckError = gitError; StateHasChanged(); return; }
 
         var (lfsOk, lfsError) = await DownloadSvc.CheckGitLfsAsync();
-        if (!lfsOk) { _preCheckError = lfsError; return; }
+        if (!lfsOk) { _preCheckError = lfsError; }
+        StateHasChanged();
     }
 
     private void StartModelDownload()
@@ -515,9 +549,10 @@
         _preCheckError = null;
 
         var (dockerOk, dockerError) = await DownloadSvc.CheckDockerAsync();
-        if (!dockerOk) { _preCheckError = dockerError; return; }
+        if (!dockerOk) { _preCheckError = dockerError; StateHasChanged(); return; }
 
         _dockerImagePresent = await DownloadSvc.IsDockerImagePresentAsync(_imageTag);
+        StateHasChanged();
     }
 
     private void StartDockerPull()
@@ -548,7 +583,7 @@
         _keyBackupConfirmed = false;
     }
 
-    private async Task ValidateStep4()
+    private void ValidateStep4()
     {
         _error = null;
 
@@ -581,21 +616,6 @@
                 _error = "A valid email address is required for Let's Encrypt certificate provisioning.";
                 return;
             }
-        }
-
-        try
-        {
-            await SettingsSvc.SaveSettingsAsync(
-                _checkpointsDir, _referencesDir, _outputDir,
-                _portStart, _portEnd,
-                string.IsNullOrWhiteSpace(_domain) ? null : _domain.Trim(),
-                string.IsNullOrWhiteSpace(_email) ? null : _email.Trim(),
-                string.IsNullOrWhiteSpace(_databaseKey) ? null : _databaseKey.Trim());
-        }
-        catch (Exception ex)
-        {
-            _error = $"Failed to save settings: {ex.Message}";
-            return;
         }
 
         _step = 5;
@@ -665,14 +685,69 @@
         _createdUser.MustSetupTotp = false;
         await UserManager.UpdateAsync(_createdUser);
 
+        // Move the database file to the user-specified path if different from the current location
+        var currentDbPath = GetCurrentDatabasePath();
+        var targetDbPath = Path.GetFullPath(_databasePath);
+        if (currentDbPath is not null && !string.Equals(currentDbPath, targetDbPath, StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                // Flush WAL data into the main DB file before copying,
+                // otherwise the copy may be missing recently committed data (e.g. the admin user).
+                using (var checkpoint = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={currentDbPath}"))
+                {
+                    await checkpoint.OpenAsync();
+                    using var cmd = checkpoint.CreateCommand();
+                    cmd.CommandText = "PRAGMA wal_checkpoint(TRUNCATE);";
+                    await cmd.ExecuteNonQueryAsync();
+                }
+
+                var targetDir = Path.GetDirectoryName(targetDbPath);
+                if (targetDir is not null && !Directory.Exists(targetDir))
+                    Directory.CreateDirectory(targetDir);
+                File.Copy(currentDbPath, targetDbPath, overwrite: true);
+
+                // WAL/SHM should be empty after TRUNCATE checkpoint, but copy if they exist
+                var walSrc = currentDbPath + "-wal";
+                var shmSrc = currentDbPath + "-shm";
+                if (File.Exists(walSrc)) File.Copy(walSrc, targetDbPath + "-wal", overwrite: true);
+                if (File.Exists(shmSrc)) File.Copy(shmSrc, targetDbPath + "-shm", overwrite: true);
+
+                // Original files can't be deleted now (EF Core holds the lock).
+                // StartupTasks.CleanupOldDatabase() handles this on next restart.
+            }
+            catch (Exception ex)
+            {
+                _error = $"Failed to copy database to '{targetDbPath}': {ex.Message}";
+                _loading = false;
+                return;
+            }
+        }
+
+        // Save all settings to appsettings.json (after user creation so DB path points to the right file)
+        try
+        {
+            await SettingsSvc.SaveSettingsAsync(
+                _databasePath,
+                _checkpointsDir, _referencesDir, _outputDir,
+                _portStart, _portEnd,
+                string.IsNullOrWhiteSpace(_domain) ? null : _domain.Trim(),
+                string.IsNullOrWhiteSpace(_email) ? null : _email.Trim(),
+                string.IsNullOrWhiteSpace(_databaseKey) ? null : _databaseKey.Trim());
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to save settings: {ex.Message}";
+            _loading = false;
+            return;
+        }
+
         // Encrypt the database if a key was provided in Step 4
         if (!string.IsNullOrWhiteSpace(_databaseKey))
         {
             try
             {
-                var dataRoot = Config["FishOrchestrator:DataRoot"] ?? @"C:\MyFishAudioProj";
-                var dbPath = Path.Combine(dataRoot, "fishorch.db");
-                await SettingsSvc.EncryptDatabaseAsync(dbPath, _databaseKey.Trim());
+                await SettingsSvc.EncryptDatabaseAsync(targetDbPath, _databaseKey.Trim());
             }
             catch (Exception ex)
             {
@@ -698,6 +773,19 @@
                 StateHasChanged();
             }), null, 2000, 3000);
         }
+    }
+
+    private string? GetCurrentDatabasePath()
+    {
+        var connStr = Config.GetConnectionString("Default");
+        if (connStr is null) return null;
+        var prefix = "Data Source=";
+        var idx = connStr.IndexOf(prefix, StringComparison.OrdinalIgnoreCase);
+        if (idx < 0) return null;
+        var pathStart = idx + prefix.Length;
+        var semicolonIdx = connStr.IndexOf(';', pathStart);
+        var path = semicolonIdx >= 0 ? connStr[pathStart..semicolonIdx] : connStr[pathStart..];
+        return Path.GetFullPath(path);
     }
 
     public ValueTask DisposeAsync()
