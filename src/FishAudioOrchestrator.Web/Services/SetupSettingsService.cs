@@ -96,18 +96,31 @@ public class SetupSettingsService
         var tempPath = dbPath + ".encrypting";
         try
         {
-            // Open the existing unencrypted database
+            // Open the existing unencrypted database and export to an encrypted copy
+            // using SQLCipher's ATTACH + sqlcipher_export approach.
+            // The backup API does not support encrypted destinations.
             using var source = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
             await source.OpenAsync();
 
-            // Create a new encrypted database
-            using var dest = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={tempPath};Password={key}");
-            await dest.OpenAsync();
+            // Attach an encrypted database and copy schema + data into it
+            using (var cmd = source.CreateCommand())
+            {
+                cmd.CommandText = $"ATTACH DATABASE '{tempPath.Replace("'", "''")}' AS encrypted KEY '{key.Replace("'", "''")}';";
+                await cmd.ExecuteNonQueryAsync();
+            }
 
-            // Copy all data from unencrypted to encrypted
-            source.BackupDatabase(dest);
+            using (var cmd = source.CreateCommand())
+            {
+                cmd.CommandText = "SELECT sqlcipher_export('encrypted');";
+                await cmd.ExecuteNonQueryAsync();
+            }
 
-            dest.Close();
+            using (var cmd = source.CreateCommand())
+            {
+                cmd.CommandText = "DETACH DATABASE encrypted;";
+                await cmd.ExecuteNonQueryAsync();
+            }
+
             source.Close();
 
             // Replace the original with the encrypted version
