@@ -15,6 +15,7 @@ public class TtsJobProcessor : BackgroundService
     private readonly OrchestratorEventBus _eventBus;
     private readonly ILogger<TtsJobProcessor> _logger;
     private readonly string _outputPath;
+    private readonly TtsJobSignal _jobSignal;
     private static readonly TimeSpan JobTimeout = TimeSpan.FromHours(2);
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(5);
 
@@ -23,7 +24,8 @@ public class TtsJobProcessor : BackgroundService
         IDockerClient docker,
         OrchestratorEventBus eventBus,
         ILogger<TtsJobProcessor> logger,
-        IConfiguration config)
+        IConfiguration config,
+        TtsJobSignal jobSignal)
     {
         _scopeFactory = scopeFactory;
         _docker = docker;
@@ -31,19 +33,7 @@ public class TtsJobProcessor : BackgroundService
         _logger = logger;
         var dataRoot = config["FishOrchestrator:DataRoot"] ?? @"C:\MyFishAudioProj";
         _outputPath = Path.Combine(dataRoot, "Output");
-    }
-
-    private static readonly SemaphoreSlim _jobSignal = new(0);
-
-    /// <summary>
-    /// Signal the processor that a new job has been queued.
-    /// Called from the UI after inserting a TtsJob.
-    /// </summary>
-    public static void SignalNewJob()
-    {
-        // Release is safe to call even if no one is waiting;
-        // the semaphore count just increments.
-        _jobSignal.Release();
+        _jobSignal = jobSignal;
     }
 
     private static void ValidateContainerId(string containerId)

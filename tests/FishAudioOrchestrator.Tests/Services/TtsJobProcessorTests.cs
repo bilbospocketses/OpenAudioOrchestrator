@@ -71,7 +71,8 @@ public class TtsJobProcessorTests : IDisposable
             mockDocker.Object,
             eventBus,
             NullLogger<TtsJobProcessor>.Instance,
-            CreateConfig());
+            CreateConfig(),
+            new TtsJobSignal());
     }
 
     private static ModelProfile CreateRunningModel(string containerId = "abcdef123456")

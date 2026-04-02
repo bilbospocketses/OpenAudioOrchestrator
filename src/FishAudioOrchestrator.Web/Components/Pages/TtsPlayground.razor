@@ -9,6 +9,7 @@
 @using Microsoft.AspNetCore.Identity
 @inject UserManager<AppUser> UserManager
 @inject OrchestratorEventBus EventBus
+@inject TtsJobSignal JobSignal
 @implements IAsyncDisposable
 
 <PageTitle>TTS Playground — Fish Audio Orchestrator</PageTitle>
@@ -292,7 +293,7 @@ else
 
         _jobs.Add(job);
         _inputText = "";
-        TtsJobProcessor.SignalNewJob();
+        JobSignal.Signal();
     }
 
     private async Task CancelJob(TtsJob job)
@@ -317,7 +318,7 @@ else
 
         job.Status = TtsJobStatus.Queued;
         job.ErrorMessage = null;
-        TtsJobProcessor.SignalNewJob();
+        JobSignal.Signal();
     }
 
     private async Task DismissJob(TtsJob job)

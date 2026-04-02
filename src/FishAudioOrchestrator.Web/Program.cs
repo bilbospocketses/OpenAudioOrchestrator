@@ -147,6 +147,7 @@ builder.Services.AddScoped<ITotpService, TotpService>();
 builder.Services.AddScoped<IAdminSeedService, AdminSeedService>();
 
 // Health monitoring
+builder.Services.AddSingleton<TtsJobSignal>();
 builder.Services.AddHostedService<HealthMonitorService>();
 builder.Services.AddHostedService<TtsJobProcessor>();
 
