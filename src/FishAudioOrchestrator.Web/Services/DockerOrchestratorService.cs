@@ -18,6 +18,7 @@ public class DockerOrchestratorService : IDockerOrchestratorService
     private readonly IDockerNetworkService _networkService;
     private readonly IHubContext<OrchestratorHub> _hub;
     private readonly OrchestratorEventBus _eventBus;
+    private readonly ILogger<DockerOrchestratorService> _logger;
 
     public DockerOrchestratorService(
         IDockerClient docker,
@@ -26,7 +27,8 @@ public class DockerOrchestratorService : IDockerOrchestratorService
         FishProxyConfigProvider proxyProvider,
         IDockerNetworkService networkService,
         IHubContext<OrchestratorHub> hub,
-        OrchestratorEventBus eventBus)
+        OrchestratorEventBus eventBus,
+        ILogger<DockerOrchestratorService> logger)
     {
         _docker = docker;
         _configService = configService;
@@ -35,6 +37,7 @@ public class DockerOrchestratorService : IDockerOrchestratorService
         _networkService = networkService;
         _hub = hub;
         _eventBus = eventBus;
+        _logger = logger;
     }
 
     private async Task PushStatusUpdateAsync()
@@ -55,6 +58,14 @@ public class DockerOrchestratorService : IDockerOrchestratorService
         // If we already have a container ID, try to start the existing container
         if (tracked.ContainerId is not null)
         {
+            if (!ContainerIdValidator.IsValid(tracked.ContainerId))
+            {
+                _logger.LogWarning(
+                    "Skipping start for profile {ProfileId}: invalid container ID format '{ContainerId}'",
+                    tracked.Id, tracked.ContainerId);
+                return;
+            }
+
             try
             {
                 var inspect = await _docker.Containers.InspectContainerAsync(tracked.ContainerId);
@@ -112,6 +123,14 @@ public class DockerOrchestratorService : IDockerOrchestratorService
         var tracked = await _context.ModelProfiles.FindAsync(profile.Id);
         if (tracked is null || tracked.ContainerId is null) return;
 
+        if (!ContainerIdValidator.IsValid(tracked.ContainerId))
+        {
+            _logger.LogWarning(
+                "Skipping stop for profile {ProfileId}: invalid container ID format '{ContainerId}'",
+                tracked.Id, tracked.ContainerId);
+            return;
+        }
+
         await ThrowIfJobProcessingAsync();
 
         await _docker.Containers.StopContainerAsync(
@@ -134,14 +153,23 @@ public class DockerOrchestratorService : IDockerOrchestratorService
 
         if (tracked.ContainerId is not null)
         {
-            if (tracked.Status == ModelStatus.Running)
+            if (!ContainerIdValidator.IsValid(tracked.ContainerId))
             {
-                await StopModelAsync(tracked);
+                _logger.LogWarning(
+                    "Skipping Docker removal for profile {ProfileId}: invalid container ID format '{ContainerId}'",
+                    tracked.Id, tracked.ContainerId);
             }
+            else
+            {
+                if (tracked.Status == ModelStatus.Running)
+                {
+                    await StopModelAsync(tracked);
+                }
 
-            await _docker.Containers.RemoveContainerAsync(
-                tracked.ContainerId,
-                new ContainerRemoveParameters { Force = true });
+                await _docker.Containers.RemoveContainerAsync(
+                    tracked.ContainerId,
+                    new ContainerRemoveParameters { Force = true });
+            }
         }
 
         _context.ModelProfiles.Remove(tracked);
