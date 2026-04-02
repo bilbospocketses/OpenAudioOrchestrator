@@ -692,13 +692,22 @@
         {
             try
             {
-                // EF Core SQLite holds the connection; we need to copy instead of move
+                // Flush WAL data into the main DB file before copying,
+                // otherwise the copy may be missing recently committed data (e.g. the admin user).
+                using (var checkpoint = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={currentDbPath}"))
+                {
+                    await checkpoint.OpenAsync();
+                    using var cmd = checkpoint.CreateCommand();
+                    cmd.CommandText = "PRAGMA wal_checkpoint(TRUNCATE);";
+                    await cmd.ExecuteNonQueryAsync();
+                }
+
                 var targetDir = Path.GetDirectoryName(targetDbPath);
                 if (targetDir is not null && !Directory.Exists(targetDir))
                     Directory.CreateDirectory(targetDir);
                 File.Copy(currentDbPath, targetDbPath, overwrite: true);
 
-                // Also copy WAL/SHM if they exist
+                // WAL/SHM should be empty after TRUNCATE checkpoint, but copy if they exist
                 var walSrc = currentDbPath + "-wal";
                 var shmSrc = currentDbPath + "-shm";
                 if (File.Exists(walSrc)) File.Copy(walSrc, targetDbPath + "-wal", overwrite: true);
