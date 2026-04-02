@@ -55,9 +55,12 @@ builder.Services.AddRateLimiter(options =>
 var dataRoot = builder.Configuration["FishOrchestrator:DataRoot"] ?? @"C:\MyFishAudioProj";
 var dpKeysPath = Path.Combine(dataRoot, ".dp-keys");
 Directory.CreateDirectory(dpKeysPath);
-builder.Services.AddDataProtection()
+var dpBuilder = builder.Services.AddDataProtection()
     .SetApplicationName("FishAudioOrchestrator")
     .PersistKeysToFileSystem(new DirectoryInfo(dpKeysPath));
+if (OperatingSystem.IsWindows())
+    dpBuilder.ProtectKeysWithDpapi();
+
 
 // Build SQLite connection string (with optional SQLCipher encryption)
 var connectionString = builder.Configuration.GetConnectionString("Default")!;
@@ -67,9 +70,11 @@ if (!string.IsNullOrWhiteSpace(encryptedDbKey))
     // Decrypt the database key using Data Protection.
     // Build a temporary provider to access the protector before full DI is ready.
     var tempServices = new ServiceCollection();
-    tempServices.AddDataProtection()
+    var tempDpBuilder = tempServices.AddDataProtection()
         .SetApplicationName("FishAudioOrchestrator")
         .PersistKeysToFileSystem(new DirectoryInfo(dpKeysPath));
+    if (OperatingSystem.IsWindows())
+        tempDpBuilder.ProtectKeysWithDpapi();
 #pragma warning disable ASP0000 // Intentional: need DataProtection before full DI is built
     using var tempProvider = tempServices.BuildServiceProvider();
 #pragma warning restore ASP0000
