@@ -57,6 +57,7 @@
 
 <form id="signin-form" method="post" action="/api/auth/signin" style="display:none;">
     <input type="hidden" name="token" id="signin-token" />
+    <input type="hidden" name="returnUrl" id="signin-return-url" />
 </form>
 
 @implements IDisposable
@@ -73,6 +74,9 @@
 
     [SupplyParameterFromQuery(Name = "tid")]
     private string? TokenId { get; set; }
+
+    [SupplyParameterFromQuery]
+    public string? ReturnUrl { get; set; }
 
     private sealed class TotpModel
     {
@@ -162,8 +166,7 @@
         var token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
         Cache.Set($"totp-verified:{token}", _user.Id, TimeSpan.FromSeconds(60));
 
-        await JS.InvokeVoidAsync("eval",
-            $"document.getElementById('signin-token').value='{Uri.EscapeDataString(token)}';document.getElementById('signin-form').submit();");
+        await JS.InvokeVoidAsync("submitSigninForm", token, ReturnUrl ?? "");
     }
 
     public void Dispose()

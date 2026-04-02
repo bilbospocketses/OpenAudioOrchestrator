@@ -14,5 +14,12 @@
 <body>
     <Routes @rendermode="InteractiveServer" />
     <script src="_framework/blazor.web.js"></script>
+    <script>
+        window.submitSigninForm = function(token, returnUrl) {
+            document.getElementById('signin-token').value = token;
+            document.getElementById('signin-return-url').value = returnUrl || '';
+            document.getElementById('signin-form').submit();
+        };
+    </script>
 </body>
 </html>
