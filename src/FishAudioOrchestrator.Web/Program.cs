@@ -116,7 +116,11 @@ builder.Services.ConfigureApplicationCookie(opts =>
     opts.Cookie.Name = ".FishOrch.Auth";
     opts.Cookie.HttpOnly = true;
     opts.Cookie.SameSite = SameSiteMode.Strict;
-    opts.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+    // Use Always when an HTTPS domain is configured (production); fall back to
+    // SameAsRequest for localhost/HTTP development so the cookie still works over HTTP.
+    opts.Cookie.SecurePolicy = string.IsNullOrWhiteSpace(domain)
+        ? CookieSecurePolicy.SameAsRequest  // Localhost/development: allow HTTP
+        : CookieSecurePolicy.Always;        // Production with HTTPS domain
     opts.ExpireTimeSpan = TimeSpan.FromHours(24);
     opts.SlidingExpiration = true;
     opts.LoginPath = "/login";
