@@ -192,7 +192,7 @@ app.Use(async (context, next) =>
     headers["Content-Security-Policy"] =
         "default-src 'self'; " +
         "script-src 'self' 'unsafe-inline'; " +  // Required: Blazor Server injects inline scripts for circuit management
-        "style-src 'self' 'unsafe-inline'; " +   // Required: Blazor scoped CSS uses inline styles
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; " + // Required: Blazor scoped CSS + Bootstrap CDN
         "img-src 'self' data:; " +               // data: needed for TOTP QR codes
         "connect-src 'self'; " +                 // WebSocket (SignalR) + fetch to same origin
         "frame-ancestors 'none'; " +
