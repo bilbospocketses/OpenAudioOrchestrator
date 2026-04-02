@@ -110,6 +110,7 @@
     private bool _isDeploying;
     private bool _modelPresent;
     private Timer? _deployDownloadTimer;
+    private CancellationTokenSource _disposeCts = new();
     private string? _error;
 
     protected override async Task OnInitializedAsync()
@@ -199,15 +200,23 @@
     {
         var checkpointsParent = Path.GetDirectoryName(_form.CheckpointPath?.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) ?? "") ?? _form.CheckpointPath ?? "";
         DownloadSvc.StartModelDownload(checkpointsParent, () => InvokeAsync(StateHasChanged));
-        _deployDownloadTimer = new Timer(_ => InvokeAsync(() =>
+        _deployDownloadTimer = new Timer(_ =>
         {
-            if (!DownloadSvc.IsModelDownloading)
+            if (_disposeCts.IsCancellationRequested) return;
+            _ = InvokeAsync(() =>
             {
-                _deployDownloadTimer?.Dispose();
-                _modelPresent = DownloadSvc.ModelDownloadCompleted;
-            }
-            StateHasChanged();
-        }), null, 1000, 2000);
+                try
+                {
+                    if (!DownloadSvc.IsModelDownloading)
+                    {
+                        _deployDownloadTimer?.Dispose();
+                        _modelPresent = DownloadSvc.ModelDownloadCompleted;
+                    }
+                    StateHasChanged();
+                }
+                catch (ObjectDisposedException) { }
+            });
+        }, null, 1000, 2000);
     }
 
     private class DeployForm
@@ -229,6 +238,8 @@
 
     public ValueTask DisposeAsync()
     {
+        _disposeCts.Cancel();
+        _disposeCts.Dispose();
         _deployDownloadTimer?.Dispose();
         return ValueTask.CompletedTask;
     }
