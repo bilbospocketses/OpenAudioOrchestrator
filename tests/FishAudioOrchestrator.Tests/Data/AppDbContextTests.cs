@@ -71,4 +71,22 @@ public class AppDbContextTests
         Assert.NotNull(nameIndex);
         Assert.True(nameIndex.IsUnique);
     }
+
+    [Fact]
+    public async Task AppUser_ThemePreference_DefaultsToDark()
+    {
+        await using var context = CreateInMemoryContext();
+        await context.Database.EnsureCreatedAsync();
+
+        var user = new AppUser
+        {
+            UserName = "themetest",
+            DisplayName = "Theme Test"
+        };
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+
+        var loaded = await context.Users.OfType<AppUser>().FirstAsync(u => u.UserName == "themetest");
+        Assert.Equal("dark", loaded.ThemePreference);
+    }
 }
