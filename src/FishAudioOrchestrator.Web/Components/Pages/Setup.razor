@@ -748,9 +748,6 @@
         {
             try
             {
-                // Release all EF Core / SQLite connections so the file is not locked
-                Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-                await Task.Delay(500); // Brief pause for file handles to release
                 await SettingsSvc.EncryptDatabaseAsync(targetDbPath, _databaseKey.Trim());
             }
             catch (Exception ex)
