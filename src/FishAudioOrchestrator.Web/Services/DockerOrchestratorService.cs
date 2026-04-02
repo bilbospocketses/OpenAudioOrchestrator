@@ -48,44 +48,48 @@ public class DockerOrchestratorService : IDockerOrchestratorService
 
     public async Task CreateAndStartModelAsync(ModelProfile profile)
     {
+        // Load fresh from our tracked context to avoid detached entity issues
+        var tracked = await _context.ModelProfiles.FindAsync(profile.Id);
+        if (tracked is null) return;
+
         // If we already have a container ID, try to start the existing container
-        if (profile.ContainerId is not null)
+        if (tracked.ContainerId is not null)
         {
             try
             {
-                var inspect = await _docker.Containers.InspectContainerAsync(profile.ContainerId);
+                var inspect = await _docker.Containers.InspectContainerAsync(tracked.ContainerId);
                 // Container exists — start it if not already running
                 if (inspect.State.Status != "running")
                 {
                     await _docker.Containers.StartContainerAsync(
-                        profile.ContainerId, new ContainerStartParameters());
+                        tracked.ContainerId, new ContainerStartParameters());
                 }
 
-                profile.Status = ModelStatus.Running;
-                profile.LastStartedAt = DateTimeOffset.UtcNow;
+                tracked.Status = ModelStatus.Running;
+                tracked.LastStartedAt = DateTimeOffset.UtcNow;
                 await _context.SaveChangesAsync();
-                await UpdateProxyAsync(profile);
+                await UpdateProxyAsync(tracked);
                 await PushStatusUpdateAsync();
                 return;
             }
             catch (DockerContainerNotFoundException)
             {
                 // Container was removed externally — fall through to create a new one
-                profile.ContainerId = null;
+                tracked.ContainerId = null;
             }
         }
 
-        var createParams = _configService.BuildCreateParams(profile);
+        var createParams = _configService.BuildCreateParams(tracked);
         var response = await _docker.Containers.CreateContainerAsync(createParams);
-        profile.ContainerId = response.ID;
+        tracked.ContainerId = response.ID;
 
         await _docker.Containers.StartContainerAsync(
             response.ID, new ContainerStartParameters());
 
-        profile.Status = ModelStatus.Running;
-        profile.LastStartedAt = DateTimeOffset.UtcNow;
+        tracked.Status = ModelStatus.Running;
+        tracked.LastStartedAt = DateTimeOffset.UtcNow;
         await _context.SaveChangesAsync();
-        await UpdateProxyAsync(profile);
+        await UpdateProxyAsync(tracked);
         await PushStatusUpdateAsync();
     }
 
@@ -104,15 +108,17 @@ public class DockerOrchestratorService : IDockerOrchestratorService
 
     public async Task StopModelAsync(ModelProfile profile)
     {
-        if (profile.ContainerId is null) return;
+        // Load fresh from our tracked context to avoid detached entity issues
+        var tracked = await _context.ModelProfiles.FindAsync(profile.Id);
+        if (tracked is null || tracked.ContainerId is null) return;
 
         await ThrowIfJobProcessingAsync();
 
         await _docker.Containers.StopContainerAsync(
-            profile.ContainerId,
+            tracked.ContainerId,
             new ContainerStopParameters { WaitBeforeKillSeconds = 30 });
 
-        profile.Status = ModelStatus.Stopped;
+        tracked.Status = ModelStatus.Stopped;
         await _context.SaveChangesAsync();
 
         _proxyProvider.ClearDestination();
@@ -122,19 +128,23 @@ public class DockerOrchestratorService : IDockerOrchestratorService
 
     public async Task RemoveModelAsync(ModelProfile profile)
     {
-        if (profile.ContainerId is null) return;
+        // Load fresh from our tracked context to avoid detached entity issues
+        var tracked = await _context.ModelProfiles.FindAsync(profile.Id);
+        if (tracked is null) return;
 
-        if (profile.Status == ModelStatus.Running)
+        if (tracked.ContainerId is not null)
         {
-            await StopModelAsync(profile);
+            if (tracked.Status == ModelStatus.Running)
+            {
+                await StopModelAsync(tracked);
+            }
+
+            await _docker.Containers.RemoveContainerAsync(
+                tracked.ContainerId,
+                new ContainerRemoveParameters { Force = true });
         }
 
-        await _docker.Containers.RemoveContainerAsync(
-            profile.ContainerId,
-            new ContainerRemoveParameters { Force = true });
-
-        profile.ContainerId = null;
-        profile.Status = ModelStatus.Created;
+        _context.ModelProfiles.Remove(tracked);
         await _context.SaveChangesAsync();
 
         await PushStatusUpdateAsync();

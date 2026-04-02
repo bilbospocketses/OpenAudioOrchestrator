@@ -133,7 +133,7 @@ public class DockerOrchestratorServiceTests
     }
 
     [Fact]
-    public async Task RemoveModelAsync_RemovesContainerAndClearsId()
+    public async Task RemoveModelAsync_DeletesProfileAndRemovesContainer()
     {
         using var context = CreateInMemoryContext();
         var mockDocker = CreateMockDockerClient();
@@ -149,12 +149,19 @@ public class DockerOrchestratorServiceTests
         };
         context.ModelProfiles.Add(profile);
         await context.SaveChangesAsync();
+        var profileId = profile.Id;
 
         var service = new DockerOrchestratorService(mockDocker.Object, mockConfig.Object, context, mockProxy.Object, mockNetwork.Object, CreateHubMock().Object, new OrchestratorEventBus(NullLogger<OrchestratorEventBus>.Instance));
         await service.RemoveModelAsync(profile);
 
-        Assert.Null(profile.ContainerId);
-        Assert.Equal(ModelStatus.Created, profile.Status);
+        // Entity should be deleted from the database
+        var deleted = await context.ModelProfiles.FindAsync(profileId);
+        Assert.Null(deleted);
+
+        // Docker container removal should have been called
+        mockDocker.Verify(d => d.Containers.RemoveContainerAsync(
+            "abc123", It.IsAny<ContainerRemoveParameters>(), It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]
