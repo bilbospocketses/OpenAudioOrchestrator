@@ -6,6 +6,52 @@ Design specs and implementation plans in `superpowers/specs/` and `superpowers/p
 
 ---
 
+## 2026-04-01 — Security & Code Audit
+
+### Critical Fixes
+- **Command injection eliminated (TtsJobProcessor):** Replaced all `Process.Start("docker", ...)` shell-outs with Docker.DotNet SDK exec API (`ExecCreateContainerAsync` + `StartAndAttachContainerExecAsync`). Added container ID validation regex (`^[a-f0-9]{12,64}$`) as defense-in-depth.
+- **Command injection eliminated (SetupService):** Added input validation for Docker image tags and filesystem paths before passing to `Process.Start` in model download and Docker pull operations.
+- **YARP reverse proxy secured:** Added `.RequireAuthorization()` to the YARP proxy mapping — `/api/tts/*` was previously accessible without authentication.
+
+### High-Severity Fixes
+- **SignalR hub container ID validated:** `OrchestratorHub.SubscribeLogs` now verifies the container ID belongs to a known `ModelProfile` before subscribing, preventing log access to arbitrary Docker containers on the host.
+- **Generation history delete authorization:** Non-admin users can now only delete their own generation entries, not other users' entries.
+- **Path traversal hardened:** Audio file endpoints (`/audio/output/`, `/audio/references/`) now use `Path.GetFullPath` canonical prefix checking instead of simple `..` string checks.
+- **Cookie policy fixed for HTTP deployments:** Changed `CookieSecurePolicy.Always` to `CookieSecurePolicy.SameAsRequest` so auth cookies work on the default HTTP deployment (port 5206).
+
+### Medium-Severity Fixes
+- **TOTP brute-force prevented:** TOTP verification page now limits to 5 attempts per pending token, with a visible countdown timer (2 minutes). Pending token expiry reduced from 5 minutes to 2 minutes.
+- **Signout CSRF fixed:** Changed `/api/auth/signout` from GET to POST to prevent cross-site logout attacks.
+- **Checkpoint path restricted:** Deploy page now validates that checkpoint paths are within the configured `Checkpoints` directory.
+- **Session fixation defense:** Security stamp is regenerated on login (`UpdateSecurityStampAsync`), invalidating all prior sessions.
+
+### Bug Fixes
+- **DbContext lifetime mismatch (Dashboard.RemoveModel):** Fixed by fetching entity from the new context instead of using a detached entity from a disposed context.
+- **Stale entity reference (TtsPlayground.RetryJob):** Replaced `db.Attach(job)` with a fresh entity fetch from the new context.
+- **Race condition (job cancel vs. poll):** Poll loop now also kills curl in the container when detecting cancellation, making cleanup idempotent from both sides.
+- **Thread safety (HealthMonitorService):** `_consecutiveFailures` now uses `Interlocked` operations instead of plain increment/assignment.
+- **Timer callbacks after disposal (Setup.razor):** Added `CancellationTokenSource` guard to prevent `ObjectDisposedException` when timer callbacks fire after Blazor circuit disconnect.
+- **GPU metrics parser timeout:** Added 5-second timeout to `nvidia-smi` process to prevent hang if the process stalls.
+
+### Security Hardening
+- **Security headers added:** `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, and `Content-Security-Policy` header.
+- **Container ports bound to localhost:** TTS containers now bind to `127.0.0.1` instead of `0.0.0.0`.
+- **SQLite database encryption:** Added SQLCipher at-rest encryption via `SQLitePCLRaw.bundle_e_sqlcipher`. Setup wizard collects encryption key with mandatory backup confirmation checkbox. Key protected by ASP.NET Data Protection API before storage in appsettings.json.
+- **Database file permissions restricted:** On startup, the database file ACL is restricted to the current user (Windows) or `chmod 600` (Linux).
+
+### Performance & Efficiency
+- **N+1 query eliminated (UserManagement):** Replaced per-user `GetRolesAsync` loop with a single join query.
+- **Generation history paginated:** Added cursor-based pagination (50 per page) with "Load More" button.
+- **TTS job processor idle optimization:** Replaced fixed 2-second polling with `SemaphoreSlim` signaling from the UI, falling back to 30-second poll.
+- **PostLoginRedirect middleware cached:** Setup status check now uses `IMemoryCache` with 60-second TTL and explicit eviction on state change, eliminating per-request DB queries for most users.
+
+### Architecture & Refactoring
+- **Program.cs extracted:** Auth endpoints → `Endpoints/AuthEndpoints.cs`, audio endpoints → `Endpoints/AudioEndpoints.cs`, startup tasks → `StartupTasks.cs`. Program.cs reduced from 303 to 170 lines.
+- **SetupService split:** Separated into `SetupDownloadService` (pre-checks, background downloads), `SetupSettingsService` (settings I/O, DB encryption), and `SetupValidation` (static validation helpers).
+- **Event bus weak references:** `OrchestratorEventBus` events now use `WeakEvent<T>` with `WeakReference` to subscriber targets. Dead subscribers are automatically pruned on invocation. `ObjectDisposedException` from disposed subscribers is silently caught; other exceptions are logged.
+
+---
+
 ## 2026-04-01
 
 ### Security: TOTP Sign-In Endpoint Hardened

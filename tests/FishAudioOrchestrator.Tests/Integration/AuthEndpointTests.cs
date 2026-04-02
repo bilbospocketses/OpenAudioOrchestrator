@@ -237,7 +237,7 @@ public class AuthEndpointTests : IClassFixture<CustomWebApplicationFactory>, IAs
     {
         var client = await _factory.CreateAuthenticatedClientAsync();
 
-        var response = await client.GetAsync("/api/auth/signout");
+        var response = await client.PostAsync("/api/auth/signout", null);
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         Assert.Equal("/login", response.Headers.Location!.OriginalString);

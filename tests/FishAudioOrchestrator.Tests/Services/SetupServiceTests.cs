@@ -1,17 +1,13 @@
 using FishAudioOrchestrator.Web.Services;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
-using Moq;
 
 namespace FishAudioOrchestrator.Tests.Services;
 
 public class SetupServiceTests
 {
-    private static SetupService CreateService()
+    private static SetupDownloadService CreateDownloadService()
     {
-        var envMock = new Mock<IWebHostEnvironment>();
-        envMock.Setup(e => e.ContentRootPath).Returns(Path.GetTempPath());
-        return new SetupService(envMock.Object, NullLogger<SetupService>.Instance);
+        return new SetupDownloadService(NullLogger<SetupDownloadService>.Instance);
     }
 
     // --- IsValidDomain ---
@@ -22,7 +18,7 @@ public class SetupServiceTests
     [InlineData("a-b.com")]
     public void IsValidDomain_ReturnsTrueForValidDomains(string domain)
     {
-        Assert.True(SetupService.IsValidDomain(domain));
+        Assert.True(SetupValidation.IsValidDomain(domain));
     }
 
     [Theory]
@@ -37,7 +33,7 @@ public class SetupServiceTests
     [InlineData("localhost")]
     public void IsValidDomain_ReturnsFalseForInvalidDomains(string? domain)
     {
-        Assert.False(SetupService.IsValidDomain(domain!));
+        Assert.False(SetupValidation.IsValidDomain(domain!));
     }
 
     // --- IsValidEmail ---
@@ -47,7 +43,7 @@ public class SetupServiceTests
     [InlineData("a@b.co")]
     public void IsValidEmail_ReturnsTrueForValidEmails(string email)
     {
-        Assert.True(SetupService.IsValidEmail(email));
+        Assert.True(SetupValidation.IsValidEmail(email));
     }
 
     [Theory]
@@ -60,7 +56,7 @@ public class SetupServiceTests
     [InlineData("spaces @in.email")]
     public void IsValidEmail_ReturnsFalseForInvalidEmails(string? email)
     {
-        Assert.False(SetupService.IsValidEmail(email!));
+        Assert.False(SetupValidation.IsValidEmail(email!));
     }
 
     // --- IsValidPort ---
@@ -71,7 +67,7 @@ public class SetupServiceTests
     [InlineData(65535)]
     public void IsValidPort_ReturnsTrueForValidPorts(int port)
     {
-        Assert.True(SetupService.IsValidPort(port));
+        Assert.True(SetupValidation.IsValidPort(port));
     }
 
     [Theory]
@@ -82,7 +78,7 @@ public class SetupServiceTests
     [InlineData(-1)]
     public void IsValidPort_ReturnsFalseForInvalidPorts(int port)
     {
-        Assert.False(SetupService.IsValidPort(port));
+        Assert.False(SetupValidation.IsValidPort(port));
     }
 
     // --- IsModelPresent ---
@@ -97,7 +93,7 @@ public class SetupServiceTests
             Directory.CreateDirectory(s2ProDir);
             File.WriteAllText(Path.Combine(s2ProDir, "model.bin"), "fake");
 
-            var service = CreateService();
+            var service = CreateDownloadService();
             Assert.True(service.IsModelPresent(tempDir));
         }
         finally
@@ -110,7 +106,7 @@ public class SetupServiceTests
     public void IsModelPresent_ReturnsFalseWhenDirectoryMissing()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), $"setup-test-{Guid.NewGuid()}");
-        var service = CreateService();
+        var service = CreateDownloadService();
 
         Assert.False(service.IsModelPresent(tempDir));
     }
@@ -124,7 +120,7 @@ public class SetupServiceTests
         {
             Directory.CreateDirectory(s2ProDir);
 
-            var service = CreateService();
+            var service = CreateDownloadService();
             Assert.False(service.IsModelPresent(tempDir));
         }
         finally
@@ -138,21 +134,21 @@ public class SetupServiceTests
     [Fact]
     public void HasActiveDownloads_ReturnsFalse_WhenNoDownloadsStarted()
     {
-        var service = CreateService();
+        var service = CreateDownloadService();
         Assert.False(service.HasActiveDownloads);
     }
 
     [Fact]
     public void ModelDownloadCompleted_DefaultsFalse()
     {
-        var service = CreateService();
+        var service = CreateDownloadService();
         Assert.False(service.ModelDownloadCompleted);
     }
 
     [Fact]
     public void DockerPullCompleted_DefaultsFalse()
     {
-        var service = CreateService();
+        var service = CreateDownloadService();
         Assert.False(service.DockerPullCompleted);
     }
 }

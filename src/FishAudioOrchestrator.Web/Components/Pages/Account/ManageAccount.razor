@@ -46,7 +46,9 @@
             <div class="card bg-dark border-secondary">
                 <div class="card-body">
                     <h5>Session</h5>
-                    <button class="btn btn-outline-danger" @onclick="Logout">Sign Out</button>
+                    <form method="post" action="/api/auth/signout">
+                        <button type="submit" class="btn btn-outline-danger">Sign Out</button>
+                    </form>
                 </div>
             </div>
         }
@@ -89,8 +91,4 @@
             _error = string.Join(" ", result.Errors.Select(e => e.Description));
     }
 
-    private void Logout()
-    {
-        Nav.NavigateTo("/api/auth/signout", forceLoad: true);
-    }
 }

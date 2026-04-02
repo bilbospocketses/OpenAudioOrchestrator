@@ -289,8 +289,12 @@ else
         {
             await Orchestrator.RemoveModelAsync(model);
             await using var db = await DbFactory.CreateDbContextAsync();
-            db.ModelProfiles.Remove(model);
-            await db.SaveChangesAsync();
+            var entity = await db.ModelProfiles.FindAsync(model.Id);
+            if (entity is not null)
+            {
+                db.ModelProfiles.Remove(entity);
+                await db.SaveChangesAsync();
+            }
         }
         catch (Exception ex) { _error = $"Failed to remove model: {ex.Message}"; }
         finally { _isOperating = false; }

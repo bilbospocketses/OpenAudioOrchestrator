@@ -1,6 +1,8 @@
+using FishAudioOrchestrator.Web.Data;
 using FishAudioOrchestrator.Web.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.EntityFrameworkCore;
 
 namespace FishAudioOrchestrator.Web.Hubs;
 
@@ -8,14 +10,20 @@ namespace FishAudioOrchestrator.Web.Hubs;
 public class OrchestratorHub : Hub
 {
     private readonly IContainerLogService _logService;
+    private readonly IDbContextFactory<AppDbContext> _dbFactory;
 
-    public OrchestratorHub(IContainerLogService logService)
+    public OrchestratorHub(IContainerLogService logService, IDbContextFactory<AppDbContext> dbFactory)
     {
         _logService = logService;
+        _dbFactory = dbFactory;
     }
 
     public async Task SubscribeLogs(string containerId)
     {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var isKnown = await db.ModelProfiles.AnyAsync(m => m.ContainerId == containerId);
+        if (!isKnown) return;
+
         await _logService.SubscribeAsync(containerId, Context.ConnectionId);
     }
 

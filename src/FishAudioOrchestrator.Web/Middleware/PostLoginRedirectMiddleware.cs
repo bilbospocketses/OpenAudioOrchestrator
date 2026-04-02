@@ -2,6 +2,7 @@ using FishAudioOrchestrator.Web.Data;
 using FishAudioOrchestrator.Web.Data.Entities;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using System.Security.Claims;
 
 namespace FishAudioOrchestrator.Web.Middleware;
@@ -29,6 +30,15 @@ public class PostLoginRedirectMiddleware
     public PostLoginRedirectMiddleware(RequestDelegate next)
     {
         _next = next;
+    }
+
+    /// <summary>
+    /// Evict the cached setup status for a user after they complete
+    /// password change or TOTP setup.
+    /// </summary>
+    public static void EvictUserCache(IMemoryCache cache, string userId)
+    {
+        cache.Remove($"setup-status:{userId}");
     }
 
     public async Task InvokeAsync(HttpContext context)
@@ -65,24 +75,34 @@ public class PostLoginRedirectMiddleware
             return;
         }
 
-        var db = context.RequestServices.GetRequiredService<AppDbContext>();
-        var appUser = await db.Users
-            .OfType<AppUser>()
-            .FirstOrDefaultAsync(u => u.Id == userId);
+        var cache = context.RequestServices.GetRequiredService<IMemoryCache>();
+        var cacheKey = $"setup-status:{userId}";
 
-        if (appUser is null)
+        // Check cache first — most users will have (false, false) cached
+        if (!cache.TryGetValue(cacheKey, out (bool MustChangePassword, bool MustSetupTotp) status))
         {
-            await _next(context);
-            return;
+            var db = context.RequestServices.GetRequiredService<AppDbContext>();
+            var appUser = await db.Users
+                .OfType<AppUser>()
+                .FirstOrDefaultAsync(u => u.Id == userId);
+
+            if (appUser is null)
+            {
+                await _next(context);
+                return;
+            }
+
+            status = (appUser.MustChangePassword, appUser.MustSetupTotp);
+            cache.Set(cacheKey, status, TimeSpan.FromSeconds(60));
         }
 
-        if (appUser.MustChangePassword)
+        if (status.MustChangePassword)
         {
             context.Response.Redirect("/account/change-password");
             return;
         }
 
-        if (appUser.MustSetupTotp)
+        if (status.MustSetupTotp)
         {
             context.Response.Redirect("/account/setup-totp");
             return;

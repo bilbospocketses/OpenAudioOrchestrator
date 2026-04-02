@@ -1,5 +1,6 @@
 using FishAudioOrchestrator.Web.Hubs;
 using FishAudioOrchestrator.Web.Services;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace FishAudioOrchestrator.Tests.Services;
 
@@ -25,7 +26,7 @@ public class OrchestratorEventBusTests
     [Fact]
     public void RaiseContainerStatus_NotifiesSubscribers()
     {
-        var bus = new OrchestratorEventBus();
+        var bus = new OrchestratorEventBus(NullLogger<OrchestratorEventBus>.Instance);
         List<ContainerStatusEvent>? received = null;
 
         bus.OnContainerStatus += events => received = events;
@@ -40,7 +41,7 @@ public class OrchestratorEventBusTests
     [Fact]
     public void RaiseContainerStatus_DoesNotThrowWithNoSubscribers()
     {
-        var bus = new OrchestratorEventBus();
+        var bus = new OrchestratorEventBus(NullLogger<OrchestratorEventBus>.Instance);
         var ex = Record.Exception(() => bus.RaiseContainerStatus(new List<ContainerStatusEvent> { CreateContainerStatus() }));
         Assert.Null(ex);
     }
@@ -50,7 +51,7 @@ public class OrchestratorEventBusTests
     [Fact]
     public void RaiseTtsNotification_NotifiesSubscribers()
     {
-        var bus = new OrchestratorEventBus();
+        var bus = new OrchestratorEventBus(NullLogger<OrchestratorEventBus>.Instance);
         TtsNotificationEvent? received = null;
 
         bus.OnTtsNotification += evt => received = evt;
@@ -67,7 +68,7 @@ public class OrchestratorEventBusTests
     [Fact]
     public void RaiseLogLine_NotifiesSubscribers()
     {
-        var bus = new OrchestratorEventBus();
+        var bus = new OrchestratorEventBus(NullLogger<OrchestratorEventBus>.Instance);
         LogLineEvent? received = null;
 
         bus.OnLogLine += evt => received = evt;
@@ -84,7 +85,7 @@ public class OrchestratorEventBusTests
     [Fact]
     public void RaiseGpuMetrics_NotifiesSubscribers()
     {
-        var bus = new OrchestratorEventBus();
+        var bus = new OrchestratorEventBus(NullLogger<OrchestratorEventBus>.Instance);
         GpuMetricsEvent? received = null;
 
         bus.OnGpuMetrics += evt => received = evt;
@@ -101,7 +102,7 @@ public class OrchestratorEventBusTests
     [Fact]
     public void RaiseTtsJobStatus_NotifiesSubscribers()
     {
-        var bus = new OrchestratorEventBus();
+        var bus = new OrchestratorEventBus(NullLogger<OrchestratorEventBus>.Instance);
         TtsJobStatusEvent? received = null;
 
         bus.OnTtsJobStatus += evt => received = evt;
@@ -118,7 +119,7 @@ public class OrchestratorEventBusTests
     [Fact]
     public void MultipleSubscribers_AllReceiveEvent()
     {
-        var bus = new OrchestratorEventBus();
+        var bus = new OrchestratorEventBus(NullLogger<OrchestratorEventBus>.Instance);
         TtsNotificationEvent? received1 = null;
         TtsNotificationEvent? received2 = null;
 
@@ -137,7 +138,7 @@ public class OrchestratorEventBusTests
     [Fact]
     public void UnsubscribedHandler_DoesNotReceiveEvent()
     {
-        var bus = new OrchestratorEventBus();
+        var bus = new OrchestratorEventBus(NullLogger<OrchestratorEventBus>.Instance);
         TtsNotificationEvent? received = null;
 
         void Handler(TtsNotificationEvent evt) => received = evt;

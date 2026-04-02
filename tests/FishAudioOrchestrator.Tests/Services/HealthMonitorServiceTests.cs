@@ -60,7 +60,7 @@ public class HealthMonitorServiceTests
         var (hubMock, gpuState) = CreateHubMocks();
         var service = new HealthMonitorService(
             scopeFactory, mockDocker.Object, CreateConfig(),
-            NullLogger<HealthMonitorService>.Instance, hubMock.Object, gpuState, new OrchestratorEventBus());
+            NullLogger<HealthMonitorService>.Instance, hubMock.Object, gpuState, new OrchestratorEventBus(NullLogger<OrchestratorEventBus>.Instance));
 
         // Need 5 consecutive failures to set Error status
         for (int i = 0; i < 5; i++)
@@ -95,7 +95,7 @@ public class HealthMonitorServiceTests
         var (hubMock, gpuState) = CreateHubMocks();
         var service = new HealthMonitorService(
             scopeFactory, mockDocker.Object, CreateConfig(),
-            NullLogger<HealthMonitorService>.Instance, hubMock.Object, gpuState, new OrchestratorEventBus());
+            NullLogger<HealthMonitorService>.Instance, hubMock.Object, gpuState, new OrchestratorEventBus(NullLogger<OrchestratorEventBus>.Instance));
 
         await service.CheckHealthAsync();
 
@@ -124,7 +124,7 @@ public class HealthMonitorServiceTests
         var (hubMock, gpuState) = CreateHubMocks();
         var service = new HealthMonitorService(
             scopeFactory, mockDocker.Object, CreateConfig(),
-            NullLogger<HealthMonitorService>.Instance, hubMock.Object, gpuState, new OrchestratorEventBus());
+            NullLogger<HealthMonitorService>.Instance, hubMock.Object, gpuState, new OrchestratorEventBus(NullLogger<OrchestratorEventBus>.Instance));
 
         await service.CheckHealthAsync();
 
@@ -187,7 +187,7 @@ public class HealthMonitorServiceTests
         var (hubMock, gpuState) = CreateHubMocks();
         var service = new HealthMonitorService(
             scopeFactory, mockDocker.Object, CreateConfig(),
-            NullLogger<HealthMonitorService>.Instance, hubMock.Object, gpuState, new OrchestratorEventBus());
+            NullLogger<HealthMonitorService>.Instance, hubMock.Object, gpuState, new OrchestratorEventBus(NullLogger<OrchestratorEventBus>.Instance));
 
         await service.CheckHealthAsync();
 
@@ -219,7 +219,7 @@ public class HealthMonitorServiceTests
         var (hubMock, gpuState) = CreateHubMocks();
         var service = new HealthMonitorService(
             scopeFactory, mockDocker.Object, CreateConfig(),
-            NullLogger<HealthMonitorService>.Instance, hubMock.Object, gpuState, new OrchestratorEventBus());
+            NullLogger<HealthMonitorService>.Instance, hubMock.Object, gpuState, new OrchestratorEventBus(NullLogger<OrchestratorEventBus>.Instance));
 
         // Only 4 failures — should NOT set Error
         for (int i = 0; i < 4; i++)
@@ -251,7 +251,7 @@ public class HealthMonitorServiceTests
         var (hubMock, gpuState) = CreateHubMocks();
         var service = new HealthMonitorService(
             scopeFactory, mockDocker.Object, CreateConfig(),
-            NullLogger<HealthMonitorService>.Instance, hubMock.Object, gpuState, new OrchestratorEventBus());
+            NullLogger<HealthMonitorService>.Instance, hubMock.Object, gpuState, new OrchestratorEventBus(NullLogger<OrchestratorEventBus>.Instance));
 
         // Fail 3 times
         mockTts.Setup(t => t.GetHealthAsync(It.IsAny<string>())).ReturnsAsync(false);
@@ -295,7 +295,7 @@ public class HealthMonitorServiceTests
         var (hubMock, gpuState) = CreateHubMocks();
         var service = new HealthMonitorService(
             scopeFactory, mockDocker.Object, CreateConfig(),
-            NullLogger<HealthMonitorService>.Instance, hubMock.Object, gpuState, new OrchestratorEventBus());
+            NullLogger<HealthMonitorService>.Instance, hubMock.Object, gpuState, new OrchestratorEventBus(NullLogger<OrchestratorEventBus>.Instance));
 
         await service.CheckHealthAsync();
 

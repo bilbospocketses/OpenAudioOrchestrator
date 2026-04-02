@@ -77,7 +77,7 @@ public class HealthMonitorHubTests
 
         var service = new HealthMonitorService(
             CreateScopeFactory(context, mockTts.Object), mockDocker.Object, CreateConfig(),
-            NullLogger<HealthMonitorService>.Instance, mockHub.Object, gpuState, new OrchestratorEventBus());
+            NullLogger<HealthMonitorService>.Instance, mockHub.Object, gpuState, new OrchestratorEventBus(NullLogger<OrchestratorEventBus>.Instance));
 
         await service.CheckHealthAsync();
 

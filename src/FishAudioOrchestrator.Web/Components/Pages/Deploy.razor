@@ -5,7 +5,7 @@
 @inject IContainerConfigService ConfigService
 @inject NavigationManager Nav
 @inject IConfiguration Config
-@inject SetupService SetupSvc
+@inject SetupDownloadService DownloadSvc
 @using Microsoft.EntityFrameworkCore
 @using FishAudioOrchestrator.Web.Data
 
@@ -17,16 +17,16 @@
 {
     <div class="alert alert-warning mb-3">
         <strong>No model found</strong> in the Checkpoints directory.
-        @if (SetupSvc.IsModelDownloading)
+        @if (DownloadSvc.IsModelDownloading)
         {
             <div class="mt-2 bg-dark border border-secondary rounded p-2" style="height: 150px; overflow-y: auto; font-family: monospace; font-size: 0.8em;">
-                @foreach (var line in SetupSvc.GetModelDownloadOutput())
+                @foreach (var line in DownloadSvc.GetModelDownloadOutput())
                 {
                     <div>@line</div>
                 }
             </div>
         }
-        else if (SetupSvc.ModelDownloadCompleted)
+        else if (DownloadSvc.ModelDownloadCompleted)
         {
             <div class="mt-2 alert alert-success mb-0">Model downloaded successfully. Refresh the page to continue.</div>
         }
@@ -127,7 +127,7 @@
         }
 
         var checkpointsParent = Path.GetDirectoryName(_form.CheckpointPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)) ?? _form.CheckpointPath;
-        _modelPresent = SetupSvc.IsModelPresent(checkpointsParent);
+        _modelPresent = DownloadSvc.IsModelPresent(checkpointsParent);
     }
 
     private async Task HandleDeploy()
@@ -140,6 +140,17 @@
         if (await db.ModelProfiles.AnyAsync(m => m.Name == _form.Name))
         {
             _error = $"A model named '{_form.Name}' already exists.";
+            return;
+        }
+
+        // Validate checkpoint path is within the Checkpoints directory
+        var dataRoot = Config["FishOrchestrator:DataRoot"] ?? @"C:\MyFishAudioProj";
+        var checkpointsRoot = Path.GetFullPath(Path.Combine(dataRoot, "Checkpoints"));
+        var resolvedPath = Path.GetFullPath(_form.CheckpointPath!);
+        if (!resolvedPath.StartsWith(checkpointsRoot + Path.DirectorySeparatorChar)
+            && !resolvedPath.Equals(checkpointsRoot, StringComparison.OrdinalIgnoreCase))
+        {
+            _error = "Checkpoint path must be within the Checkpoints directory.";
             return;
         }
 
@@ -187,13 +198,13 @@
     private void StartModelDownload()
     {
         var checkpointsParent = Path.GetDirectoryName(_form.CheckpointPath?.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) ?? "") ?? _form.CheckpointPath ?? "";
-        SetupSvc.StartModelDownload(checkpointsParent, () => InvokeAsync(StateHasChanged));
+        DownloadSvc.StartModelDownload(checkpointsParent, () => InvokeAsync(StateHasChanged));
         _deployDownloadTimer = new Timer(_ => InvokeAsync(() =>
         {
-            if (!SetupSvc.IsModelDownloading)
+            if (!DownloadSvc.IsModelDownloading)
             {
                 _deployDownloadTimer?.Dispose();
-                _modelPresent = SetupSvc.ModelDownloadCompleted;
+                _modelPresent = DownloadSvc.ModelDownloadCompleted;
             }
             StateHasChanged();
         }), null, 1000, 2000);

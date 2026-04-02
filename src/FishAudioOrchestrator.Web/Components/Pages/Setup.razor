@@ -7,7 +7,8 @@
 @inject IConfiguration Config
 @inject IWebHostEnvironment Env
 @inject NavigationManager Nav
-@inject SetupService SetupSvc
+@inject SetupDownloadService DownloadSvc
+@inject SetupSettingsService SettingsSvc
 @layout EmptyLayout
 
 <PageTitle>Setup — Fish Audio Orchestrator</PageTitle>
@@ -62,7 +63,7 @@
                     <button class="btn btn-outline-light w-100 mb-2" @onclick="RunModelPreChecks">Retry</button>
                     <button class="btn btn-outline-secondary w-100" @onclick="SkipModelDownload">Skip — I'll download it manually later</button>
                 }
-                else if (SetupSvc.IsModelDownloading)
+                else if (DownloadSvc.IsModelDownloading)
                 {
                     <div class="mb-3">
                         <div class="bg-dark border border-secondary rounded p-2" style="height: 200px; overflow-y: auto; font-family: monospace; font-size: 0.8em;">
@@ -74,14 +75,14 @@
                     </div>
                     <button class="btn btn-primary w-100" @onclick="GoToStep3">Next (download continues in background)</button>
                 }
-                else if (SetupSvc.ModelDownloadCompleted)
+                else if (DownloadSvc.ModelDownloadCompleted)
                 {
                     <div class="alert alert-success">Model downloaded successfully.</div>
                     <button class="btn btn-primary w-100" @onclick="GoToStep3">Next</button>
                 }
-                else if (!string.IsNullOrEmpty(SetupSvc.ModelDownloadError))
+                else if (!string.IsNullOrEmpty(DownloadSvc.ModelDownloadError))
                 {
-                    <div class="alert alert-danger">@SetupSvc.ModelDownloadError</div>
+                    <div class="alert alert-danger">@DownloadSvc.ModelDownloadError</div>
                     <div class="bg-dark border border-secondary rounded p-2 mb-3" style="height: 150px; overflow-y: auto; font-family: monospace; font-size: 0.8em;">
                         @foreach (var line in _downloadOutput)
                         {
@@ -118,7 +119,7 @@
                     <div class="alert alert-warning" style="white-space: pre-wrap;">@_preCheckError</div>
                     <button class="btn btn-outline-light w-100" @onclick="RunDockerPreChecks">Retry</button>
                 }
-                else if (SetupSvc.IsDockerPulling)
+                else if (DownloadSvc.IsDockerPulling)
                 {
                     <div class="mb-3">
                         <div class="bg-dark border border-secondary rounded p-2" style="height: 200px; overflow-y: auto; font-family: monospace; font-size: 0.8em;">
@@ -130,14 +131,14 @@
                     </div>
                     <button class="btn btn-primary w-100" @onclick="() => _step = 4">Next (download continues in background)</button>
                 }
-                else if (SetupSvc.DockerPullCompleted)
+                else if (DownloadSvc.DockerPullCompleted)
                 {
                     <div class="alert alert-success">Docker image downloaded successfully.</div>
                     <button class="btn btn-primary w-100" @onclick="() => _step = 4">Next</button>
                 }
-                else if (!string.IsNullOrEmpty(SetupSvc.DockerPullError))
+                else if (!string.IsNullOrEmpty(DownloadSvc.DockerPullError))
                 {
-                    <div class="alert alert-danger">@SetupSvc.DockerPullError</div>
+                    <div class="alert alert-danger">@DownloadSvc.DockerPullError</div>
                     <div class="bg-dark border border-secondary rounded p-2 mb-3" style="height: 150px; overflow-y: auto; font-family: monospace; font-size: 0.8em;">
                         @foreach (var line in _pullOutput)
                         {
@@ -173,6 +174,32 @@
                         <label class="form-label">End Port</label>
                         <input type="number" class="form-control bg-dark text-light border-secondary" @bind="_portEnd" />
                     </div>
+                </div>
+
+                <h6 class="mt-4">Database Encryption</h6>
+                <p class="text-muted small">Encrypt the SQLite database at rest using SQLCipher. Strongly recommended. The key is stored in appsettings.json and is required to open the database on future startups.</p>
+                <div class="mb-3">
+                    <label class="form-label">Database Encryption Key</label>
+                    <div class="input-group">
+                        <input class="form-control bg-dark text-light border-secondary" @bind="_databaseKey"
+                               placeholder="Leave blank to skip encryption" />
+                        <button type="button" class="btn btn-outline-light" @onclick="GenerateDatabaseKey">Generate</button>
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(_databaseKey))
+                    {
+                        <div class="alert alert-danger small mt-2">
+                            <strong>WARNING:</strong> This key is the only way to access your encrypted database.
+                            If you lose this key, your database — including all user accounts, generation history,
+                            and voice library data — <strong>cannot be recovered</strong>.
+                            Copy this key now and store it in a secure location (e.g. password manager, secure note, or printed backup).
+                        </div>
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="checkbox" id="keyBackupConfirm" @bind="_keyBackupConfirmed" />
+                            <label class="form-check-label" for="keyBackupConfirm">
+                                I have saved this key in a secure location and understand it cannot be recovered if lost.
+                            </label>
+                        </div>
+                    }
                 </div>
 
                 <h6 class="mt-4">Domain & HTTPS (Optional)</h6>
@@ -259,29 +286,29 @@
                 @* --- Step 7: Setup Complete --- *@
                 <h5>Setup Complete</h5>
 
-                @if (SetupSvc.HasActiveDownloads)
+                @if (DownloadSvc.HasActiveDownloads)
                 {
                     <div class="alert alert-warning">
                         Downloads are still in progress. Please wait for them to complete before restarting the application.
                         Stopping the app now will cancel the downloads and they will need to start over.
                     </div>
 
-                    @if (SetupSvc.IsModelDownloading)
+                    @if (DownloadSvc.IsModelDownloading)
                     {
                         <h6>Model Download</h6>
                         <div class="bg-dark border border-secondary rounded p-2 mb-3" style="height: 150px; overflow-y: auto; font-family: monospace; font-size: 0.8em;">
-                            @foreach (var line in SetupSvc.GetModelDownloadOutput())
+                            @foreach (var line in DownloadSvc.GetModelDownloadOutput())
                             {
                                 <div>@line</div>
                             }
                         </div>
                     }
 
-                    @if (SetupSvc.IsDockerPulling)
+                    @if (DownloadSvc.IsDockerPulling)
                     {
                         <h6>Docker Image Download</h6>
                         <div class="bg-dark border border-secondary rounded p-2 mb-3" style="height: 150px; overflow-y: auto; font-family: monospace; font-size: 0.8em;">
-                            @foreach (var line in SetupSvc.GetDockerPullOutput())
+                            @foreach (var line in DownloadSvc.GetDockerPullOutput())
                             {
                                 <div>@line</div>
                             }
@@ -293,12 +320,13 @@
                     <div class="alert alert-success">
                         <p><strong>Data directories:</strong> Configured</p>
                         <p><strong>Model:</strong> @(_modelSkipped ? "Skipped (download manually before deploying)" : "Downloaded")</p>
-                        <p><strong>Docker image:</strong> @(SetupSvc.DockerPullCompleted || _dockerImagePresent ? "Available" : "Not downloaded")</p>
+                        <p><strong>Docker image:</strong> @(DownloadSvc.DockerPullCompleted || _dockerImagePresent ? "Available" : "Not downloaded")</p>
                         <p><strong>Port range:</strong> @_portStart - @_portEnd</p>
                         @if (!string.IsNullOrWhiteSpace(_domain))
                         {
                             <p><strong>Domain:</strong> @_domain</p>
                         }
+                        <p><strong>Database encryption:</strong> @(string.IsNullOrWhiteSpace(_databaseKey) ? "Disabled" : "Enabled (SQLCipher)")</p>
                         <p><strong>Admin account:</strong> @_adminModel.Username</p>
                         <p><strong>TOTP:</strong> Enabled</p>
                     </div>
@@ -353,6 +381,8 @@
     private int _portEnd = 9099;
     private string _domain = "";
     private string _email = "";
+    private string _databaseKey = "";
+    private bool _keyBackupConfirmed;
 
     // Steps 5-6
     private AdminModel _adminModel = new();
@@ -363,6 +393,9 @@
 
     // Step 7
     private Timer? _completionTimer;
+
+    // Disposal guard
+    private readonly CancellationTokenSource _disposeCts = new();
 
     private sealed class AdminModel
     {
@@ -421,7 +454,7 @@
         _referencesDir = dirs[1];
         _outputDir = dirs[2];
 
-        _modelAlreadyPresent = SetupSvc.IsModelPresent(_checkpointsDir);
+        _modelAlreadyPresent = DownloadSvc.IsModelPresent(_checkpointsDir);
         _ = RunModelPreChecks();
 
         _step = 2;
@@ -432,31 +465,32 @@
     private async Task RunModelPreChecks()
     {
         _preCheckError = null;
-        _modelAlreadyPresent = SetupSvc.IsModelPresent(_checkpointsDir);
+        _modelAlreadyPresent = DownloadSvc.IsModelPresent(_checkpointsDir);
         if (_modelAlreadyPresent) return;
 
-        var (gitOk, gitError) = await SetupSvc.CheckGitAsync();
+        var (gitOk, gitError) = await DownloadSvc.CheckGitAsync();
         if (!gitOk) { _preCheckError = gitError; return; }
 
-        var (lfsOk, lfsError) = await SetupSvc.CheckGitLfsAsync();
+        var (lfsOk, lfsError) = await DownloadSvc.CheckGitLfsAsync();
         if (!lfsOk) { _preCheckError = lfsError; return; }
     }
 
     private void StartModelDownload()
     {
         _error = null;
-        SetupSvc.StartModelDownload(_checkpointsDir, () => InvokeAsync(RefreshDownloadOutput));
+        DownloadSvc.StartModelDownload(_checkpointsDir, () => InvokeAsync(RefreshDownloadOutput));
         _downloadTimer = new Timer(_ => InvokeAsync(RefreshDownloadOutput), null, 1000, 2000);
     }
 
     private void RefreshDownloadOutput()
     {
-        _downloadOutput = SetupSvc.GetModelDownloadOutput();
-        if (!SetupSvc.IsModelDownloading)
+        if (_disposeCts.IsCancellationRequested) return;
+        _downloadOutput = DownloadSvc.GetModelDownloadOutput();
+        if (!DownloadSvc.IsModelDownloading)
         {
             _downloadTimer?.Dispose();
             _downloadTimer = null;
-            _modelAlreadyPresent = SetupSvc.ModelDownloadCompleted;
+            _modelAlreadyPresent = DownloadSvc.ModelDownloadCompleted;
         }
         StateHasChanged();
     }
@@ -480,38 +514,51 @@
     {
         _preCheckError = null;
 
-        var (dockerOk, dockerError) = await SetupSvc.CheckDockerAsync();
+        var (dockerOk, dockerError) = await DownloadSvc.CheckDockerAsync();
         if (!dockerOk) { _preCheckError = dockerError; return; }
 
-        _dockerImagePresent = await SetupSvc.IsDockerImagePresentAsync(_imageTag);
+        _dockerImagePresent = await DownloadSvc.IsDockerImagePresentAsync(_imageTag);
     }
 
     private void StartDockerPull()
     {
         _error = null;
-        SetupSvc.StartDockerPull(_imageTag, () => InvokeAsync(RefreshPullOutput));
+        DownloadSvc.StartDockerPull(_imageTag, () => InvokeAsync(RefreshPullOutput));
         _pullTimer = new Timer(_ => InvokeAsync(RefreshPullOutput), null, 1000, 2000);
     }
 
     private void RefreshPullOutput()
     {
-        _pullOutput = SetupSvc.GetDockerPullOutput();
-        if (!SetupSvc.IsDockerPulling)
+        if (_disposeCts.IsCancellationRequested) return;
+        _pullOutput = DownloadSvc.GetDockerPullOutput();
+        if (!DownloadSvc.IsDockerPulling)
         {
             _pullTimer?.Dispose();
             _pullTimer = null;
-            _dockerImagePresent = SetupSvc.DockerPullCompleted;
+            _dockerImagePresent = DownloadSvc.DockerPullCompleted;
         }
         StateHasChanged();
     }
 
     // --- Step 4: Configuration ---
 
+    private void GenerateDatabaseKey()
+    {
+        _databaseKey = SetupSettingsService.GenerateDatabaseKey();
+        _keyBackupConfirmed = false;
+    }
+
     private async Task ValidateStep4()
     {
         _error = null;
 
-        if (!SetupService.IsValidPort(_portStart) || !SetupService.IsValidPort(_portEnd))
+        if (!string.IsNullOrWhiteSpace(_databaseKey) && !_keyBackupConfirmed)
+        {
+            _error = "You must confirm that you have saved the encryption key before continuing.";
+            return;
+        }
+
+        if (!SetupValidation.IsValidPort(_portStart) || !SetupValidation.IsValidPort(_portEnd))
         {
             _error = "Ports must be between 1024 and 65535.";
             return;
@@ -524,12 +571,12 @@
 
         if (!string.IsNullOrWhiteSpace(_domain))
         {
-            if (!SetupService.IsValidDomain(_domain.Trim()))
+            if (!SetupValidation.IsValidDomain(_domain.Trim()))
             {
                 _error = "Invalid domain format. Example: fish.example.com";
                 return;
             }
-            if (string.IsNullOrWhiteSpace(_email) || !SetupService.IsValidEmail(_email.Trim()))
+            if (string.IsNullOrWhiteSpace(_email) || !SetupValidation.IsValidEmail(_email.Trim()))
             {
                 _error = "A valid email address is required for Let's Encrypt certificate provisioning.";
                 return;
@@ -538,11 +585,12 @@
 
         try
         {
-            await SetupSvc.SaveSettingsAsync(
+            await SettingsSvc.SaveSettingsAsync(
                 _checkpointsDir, _referencesDir, _outputDir,
                 _portStart, _portEnd,
                 string.IsNullOrWhiteSpace(_domain) ? null : _domain.Trim(),
-                string.IsNullOrWhiteSpace(_email) ? null : _email.Trim());
+                string.IsNullOrWhiteSpace(_email) ? null : _email.Trim(),
+                string.IsNullOrWhiteSpace(_databaseKey) ? null : _databaseKey.Trim());
         }
         catch (Exception ex)
         {
@@ -617,14 +665,32 @@
         _createdUser.MustSetupTotp = false;
         await UserManager.UpdateAsync(_createdUser);
 
+        // Encrypt the database if a key was provided in Step 4
+        if (!string.IsNullOrWhiteSpace(_databaseKey))
+        {
+            try
+            {
+                var dataRoot = Config["FishOrchestrator:DataRoot"] ?? @"C:\MyFishAudioProj";
+                var dbPath = Path.Combine(dataRoot, "fishorch.db");
+                await SettingsSvc.EncryptDatabaseAsync(dbPath, _databaseKey.Trim());
+            }
+            catch (Exception ex)
+            {
+                _error = $"Database encryption failed: {ex.Message}. The database is unencrypted. You can retry encryption manually after restarting.";
+                _loading = false;
+                return;
+            }
+        }
+
         _step = 7;
         _loading = false;
 
-        if (SetupSvc.HasActiveDownloads)
+        if (DownloadSvc.HasActiveDownloads)
         {
             _completionTimer = new Timer(_ => InvokeAsync(() =>
             {
-                if (!SetupSvc.HasActiveDownloads)
+                if (_disposeCts.IsCancellationRequested) return;
+                if (!DownloadSvc.HasActiveDownloads)
                 {
                     _completionTimer?.Dispose();
                     _completionTimer = null;
@@ -636,6 +702,8 @@
 
     public ValueTask DisposeAsync()
     {
+        _disposeCts.Cancel();
+        _disposeCts.Dispose();
         _downloadTimer?.Dispose();
         _pullTimer?.Dispose();
         _completionTimer?.Dispose();

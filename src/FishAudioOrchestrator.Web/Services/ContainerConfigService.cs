@@ -67,7 +67,7 @@ public class ContainerConfigService : IContainerConfigService
                 {
                     ["8080/tcp"] = new List<PortBinding>
                     {
-                        new PortBinding { HostIP = "0.0.0.0", HostPort = profile.HostPort.ToString() }
+                        new PortBinding { HostIP = "127.0.0.1", HostPort = profile.HostPort.ToString() }
                     }
                 },
                 Binds = new List<string>

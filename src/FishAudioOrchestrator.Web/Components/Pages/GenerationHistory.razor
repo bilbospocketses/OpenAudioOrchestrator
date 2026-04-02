@@ -67,10 +67,24 @@ else
             }
         </tbody>
     </table>
+
+    @if (_hasMore)
+    {
+        <div class="text-center my-3">
+            <button class="btn btn-outline-light" @onclick="LoadMoreAsync" disabled="@_loadingMore">
+                @(_loadingMore ? "Loading..." : "Load More")
+            </button>
+        </div>
+    }
 }
 
 @code {
+    private const int PageSize = 50;
     private List<GenerationLog> _logs = new();
+    private bool _hasMore;
+    private bool _loadingMore;
+    private bool _isAdmin;
+    private string? _userId;
     private ConfirmDialog _confirmDialog = null!;
     private string _confirmMessage = "";
     private EventCallback _confirmAction;
@@ -82,21 +96,49 @@ else
     {
         var state = await AuthState;
         var user = await UserManager.GetUserAsync(state.User);
-        var isAdmin = state.User.IsInRole("Admin");
+        _isAdmin = state.User.IsInRole("Admin");
+        _userId = user?.Id;
 
+        await LoadPageAsync();
+
+        EventBus.OnTtsNotification += OnTtsNotificationRaw;
+    }
+
+    private async Task LoadPageAsync(DateTimeOffset? before = null)
+    {
         await using var db = await DbFactory.CreateDbContextAsync();
         IQueryable<GenerationLog> query = db.GenerationLogs
             .Include(l => l.ModelProfile)
             .Include(l => l.ReferenceVoice);
 
-        if (!isAdmin && user is not null)
+        if (!_isAdmin && _userId is not null)
         {
-            query = query.Where(l => l.UserId == user.Id);
+            query = query.Where(l => l.UserId == _userId);
         }
 
-        _logs = await query.OrderByDescending(l => l.CreatedAt).ToListAsync();
+        query = query.OrderByDescending(l => l.CreatedAt);
 
-        EventBus.OnTtsNotification += OnTtsNotificationRaw;
+        if (before.HasValue)
+        {
+            query = query.Where(l => l.CreatedAt < before.Value);
+        }
+
+        var results = await query.Take(PageSize + 1).ToListAsync();
+        _hasMore = results.Count > PageSize;
+        if (_hasMore) results.RemoveAt(results.Count - 1);
+
+        if (before.HasValue)
+            _logs.AddRange(results);
+        else
+            _logs = results;
+    }
+
+    private async Task LoadMoreAsync()
+    {
+        _loadingMore = true;
+        var cursor = _logs.Last().CreatedAt;
+        await LoadPageAsync(cursor);
+        _loadingMore = false;
     }
 
     private void OnTtsNotificationRaw(TtsNotificationEvent notification)
@@ -133,6 +175,10 @@ else
 
     private async Task DeleteEntry(GenerationLog log)
     {
+        // Only allow deletion of own entries (or any entry for admins)
+        if (!_isAdmin && log.UserId != _userId)
+            return;
+
         var dataRoot = Config["FishOrchestrator:DataRoot"] ?? @"C:\MyFishAudioProj";
         var filePath = Path.Combine(dataRoot, "Output", log.OutputFileName);
 

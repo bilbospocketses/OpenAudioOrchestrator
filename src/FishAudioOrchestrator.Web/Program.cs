@@ -1,16 +1,17 @@
 using Docker.DotNet;
+using FishAudioOrchestrator.Web;
 using FishAudioOrchestrator.Web.Components;
 using FishAudioOrchestrator.Web.Data;
 using FishAudioOrchestrator.Web.Data.Entities;
+using FishAudioOrchestrator.Web.Endpoints;
 using FishAudioOrchestrator.Web.Hubs;
 using FishAudioOrchestrator.Web.Middleware;
 using FishAudioOrchestrator.Web.Proxy;
 using FishAudioOrchestrator.Web.Services;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Memory;
 using System.Net;
-using System.Security.Cryptography;
 using System.Threading.RateLimiting;
 using Yarp.ReverseProxy.Configuration;
 
@@ -50,10 +51,48 @@ builder.Services.AddRateLimiter(options =>
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 });
 
+// Data Protection (persistent key storage in DataRoot)
+var dataRoot = builder.Configuration["FishOrchestrator:DataRoot"] ?? @"C:\MyFishAudioProj";
+var dpKeysPath = Path.Combine(dataRoot, ".dp-keys");
+Directory.CreateDirectory(dpKeysPath);
+builder.Services.AddDataProtection()
+    .SetApplicationName("FishAudioOrchestrator")
+    .PersistKeysToFileSystem(new DirectoryInfo(dpKeysPath));
+
+// Build SQLite connection string (with optional SQLCipher encryption)
+var connectionString = builder.Configuration.GetConnectionString("Default")!;
+var encryptedDbKey = builder.Configuration["FishOrchestrator:DatabaseKey"];
+if (!string.IsNullOrWhiteSpace(encryptedDbKey))
+{
+    // Decrypt the database key using Data Protection.
+    // Build a temporary provider to access the protector before full DI is ready.
+    var tempServices = new ServiceCollection();
+    tempServices.AddDataProtection()
+        .SetApplicationName("FishAudioOrchestrator")
+        .PersistKeysToFileSystem(new DirectoryInfo(dpKeysPath));
+#pragma warning disable ASP0000 // Intentional: need DataProtection before full DI is built
+    using var tempProvider = tempServices.BuildServiceProvider();
+#pragma warning restore ASP0000
+    var protector = tempProvider.GetRequiredService<IDataProtectionProvider>()
+        .CreateProtector("DatabaseKey");
+    try
+    {
+        var databaseKey = protector.Unprotect(encryptedDbKey);
+        connectionString += $";Password={databaseKey}";
+    }
+    catch (Exception ex)
+    {
+        // If decryption fails (e.g. key was stored in plain text before migration),
+        // try using the value directly as a fallback
+        Console.WriteLine($"Warning: Could not decrypt DatabaseKey ({ex.Message}). Trying as plain text.");
+        connectionString += $";Password={encryptedDbKey}";
+    }
+}
+
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("Default")));
+    options.UseSqlite(connectionString));
 builder.Services.AddDbContextFactory<AppDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("Default")), ServiceLifetime.Scoped);
+    options.UseSqlite(connectionString), ServiceLifetime.Scoped);
 
 // ASP.NET Identity
 builder.Services.AddIdentity<AppUser, IdentityRole>(opts =>
@@ -74,7 +113,7 @@ builder.Services.ConfigureApplicationCookie(opts =>
     opts.Cookie.Name = ".FishOrch.Auth";
     opts.Cookie.HttpOnly = true;
     opts.Cookie.SameSite = SameSiteMode.Strict;
-    opts.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+    opts.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
     opts.ExpireTimeSpan = TimeSpan.FromHours(24);
     opts.SlidingExpiration = true;
     opts.LoginPath = "/login";
@@ -116,46 +155,14 @@ builder.Services.AddSignalR();
 builder.Services.AddSingleton<IContainerLogService, ContainerLogService>();
 builder.Services.AddSingleton<GpuMetricsState>();
 builder.Services.AddSingleton<OrchestratorEventBus>();
-builder.Services.AddSingleton<SetupService>();
+builder.Services.AddSingleton<SetupDownloadService>();
+builder.Services.AddSingleton<SetupSettingsService>();
 builder.Services.AddMemoryCache();
 
 var app = builder.Build();
 
-// Run migrations
-using (var scope = app.Services.CreateScope())
-{
-    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    await db.Database.MigrateAsync();
-}
-
-// Seed roles
-using (var scope = app.Services.CreateScope())
-{
-    var roleMgr = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
-    foreach (var role in new[] { "Admin", "User" })
-    {
-        if (!await roleMgr.RoleExistsAsync(role))
-            await roleMgr.CreateAsync(new IdentityRole(role));
-    }
-}
-
-// Seed admin from env vars (if configured and no users exist)
-using (var scope = app.Services.CreateScope())
-{
-    var seeder = scope.ServiceProvider.GetRequiredService<IAdminSeedService>();
-    await seeder.SeedIfConfiguredAsync();
-}
-
-// Ensure Docker bridge network exists
-try
-{
-    var networkService = app.Services.GetRequiredService<IDockerNetworkService>();
-    await networkService.EnsureNetworkExistsAsync();
-}
-catch (Exception ex)
-{
-    app.Logger.LogWarning(ex, "Could not ensure Docker bridge network exists. Docker may not be running.");
-}
+// Run migrations, seed roles/admin, ensure Docker network
+await StartupTasks.RunAsync(app);
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
@@ -165,6 +172,18 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+// Security headers
+app.Use(async (context, next) =>
+{
+    var headers = context.Response.Headers;
+    headers["X-Content-Type-Options"] = "nosniff";
+    headers["X-Frame-Options"] = "DENY";
+    headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+    headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;";
+    await next();
+});
+
 app.UseRateLimiter();
 
 // Auth middleware
@@ -175,111 +194,15 @@ app.UseAuthorization();
 app.UseMiddleware<SetupGuardMiddleware>();
 app.UseMiddleware<PostLoginRedirectMiddleware>();
 
-// Serve audio files from the data directories (authenticated endpoints)
-var dataRoot = app.Configuration["FishOrchestrator:DataRoot"] ?? @"C:\MyFishAudioProj";
-
-app.MapGet("/audio/output/{fileName}", (string fileName) =>
-{
-    if (fileName.Contains("..") || fileName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
-        return Results.NotFound();
-
-    var filePath = Path.Combine(dataRoot, "Output", fileName);
-    if (!File.Exists(filePath))
-        return Results.NotFound();
-
-    return Results.File(filePath, "audio/wav", enableRangeProcessing: true);
-}).RequireAuthorization();
-
-app.MapGet("/audio/references/{*filePath}", (string filePath) =>
-{
-    if (filePath.Contains(".."))
-        return Results.NotFound();
-
-    var fullPath = Path.Combine(dataRoot, "References", filePath.Replace('/', Path.DirectorySeparatorChar));
-    if (!File.Exists(fullPath))
-        return Results.NotFound();
-
-    var contentType = Path.GetExtension(fullPath).ToLowerInvariant() switch
-    {
-        ".wav" => "audio/wav",
-        ".mp3" => "audio/mpeg",
-        ".flac" => "audio/flac",
-        ".ogg" => "audio/ogg",
-        _ => "application/octet-stream"
-    };
-    return Results.File(fullPath, contentType, enableRangeProcessing: true);
-}).RequireAuthorization();
-
+// Endpoint mapping
+app.MapAudioEndpoints();
 app.UseAntiforgery();
-
-// YARP reverse proxy for TTS API
-app.MapReverseProxy();
-
+app.MapReverseProxy().RequireAuthorization();
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
-
 app.MapHub<OrchestratorHub>("/hubs/orchestrator");
-
-// Auth endpoints (Blazor Server can't set cookies after response starts)
-app.MapPost("/api/auth/login", async (HttpContext httpContext, SignInManager<AppUser> signInManager, UserManager<AppUser> userManager) =>
-{
-    var form = await httpContext.Request.ReadFormAsync();
-    var username = form["username"].ToString();
-    var password = form["password"].ToString();
-
-    var user = await userManager.FindByNameAsync(username);
-    if (user is null)
-        return Results.Redirect("/login?error=invalid");
-
-    var result = await signInManager.CheckPasswordSignInAsync(user, password, lockoutOnFailure: true);
-    if (!result.Succeeded)
-    {
-        var errorCode = result.IsLockedOut ? "locked" : "invalid";
-        return Results.Redirect($"/login?error={errorCode}");
-    }
-
-    var hasTwoFactor = await userManager.GetTwoFactorEnabledAsync(user);
-    if (hasTwoFactor)
-    {
-        var cache = httpContext.RequestServices.GetRequiredService<IMemoryCache>();
-        var totpToken = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
-        cache.Set($"totp-pending:{totpToken}", user.Id, TimeSpan.FromMinutes(5));
-        return Results.Redirect($"/login/totp?tid={Uri.EscapeDataString(totpToken)}");
-    }
-
-    await signInManager.SignInAsync(user, isPersistent: false);
-    return Results.Redirect("/");
-}).RequireRateLimiting("auth");
-
-app.MapGet("/api/auth/signin", async (string token, string? returnUrl, SignInManager<AppUser> signInManager, UserManager<AppUser> userManager, IMemoryCache cache) =>
-{
-    // Validate the one-time TOTP completion token
-    var cacheKey = $"totp-verified:{token}";
-    if (!cache.TryGetValue(cacheKey, out string? userId) || userId is null)
-        return Results.Redirect("/login?error=invalid");
-
-    // Remove token so it can only be used once
-    cache.Remove(cacheKey);
-
-    var user = await userManager.FindByIdAsync(userId);
-    if (user is null)
-        return Results.Redirect("/login");
-
-    await signInManager.SignInAsync(user, isPersistent: false);
-
-    // Prevent open redirect — only allow local paths
-    if (!string.IsNullOrEmpty(returnUrl) && returnUrl.StartsWith('/') && !returnUrl.StartsWith("//"))
-        return Results.Redirect(returnUrl);
-
-    return Results.Redirect("/");
-});
-
-app.MapGet("/api/auth/signout", async (SignInManager<AppUser> signInManager) =>
-{
-    await signInManager.SignOutAsync();
-    return Results.Redirect("/login");
-});
+app.MapAuthEndpoints();
 
 app.Run();
 

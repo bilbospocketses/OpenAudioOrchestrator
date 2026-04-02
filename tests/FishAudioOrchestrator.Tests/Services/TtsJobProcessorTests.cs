@@ -1,3 +1,4 @@
+using Docker.DotNet;
 using FishAudioOrchestrator.Web.Data;
 using FishAudioOrchestrator.Web.Data.Entities;
 using FishAudioOrchestrator.Web.Hubs;
@@ -63,15 +64,17 @@ public class TtsJobProcessorTests : IDisposable
     private TtsJobProcessor CreateProcessor(AppDbContext context, OrchestratorEventBus? eventBus = null)
     {
         var scopeFactory = CreateScopeFactory(context);
-        eventBus ??= new OrchestratorEventBus();
+        eventBus ??= new OrchestratorEventBus(NullLogger<OrchestratorEventBus>.Instance);
+        var mockDocker = new Mock<IDockerClient>();
         return new TtsJobProcessor(
             scopeFactory,
+            mockDocker.Object,
             eventBus,
             NullLogger<TtsJobProcessor>.Instance,
             CreateConfig());
     }
 
-    private static ModelProfile CreateRunningModel(string containerId = "container-1")
+    private static ModelProfile CreateRunningModel(string containerId = "abcdef123456")
     {
         return new ModelProfile
         {
@@ -123,7 +126,7 @@ public class TtsJobProcessorTests : IDisposable
         var filePath = Path.Combine(_outputPath, "completed-output.wav");
         await File.WriteAllBytesAsync(filePath, new byte[2000]);
 
-        var eventBus = new OrchestratorEventBus();
+        var eventBus = new OrchestratorEventBus(NullLogger<OrchestratorEventBus>.Instance);
         TtsJobStatusEvent? receivedEvent = null;
         TtsNotificationEvent? receivedNotification = null;
         eventBus.OnTtsJobStatus += evt => receivedEvent = evt;
@@ -186,7 +189,7 @@ public class TtsJobProcessorTests : IDisposable
         // After recovery, the process loop picks it up again and fails it
         // (no running model), which proves it was re-queued first.
 
-        var eventBus = new OrchestratorEventBus();
+        var eventBus = new OrchestratorEventBus(NullLogger<OrchestratorEventBus>.Instance);
         var statusEvents = new List<TtsJobStatusEvent>();
         eventBus.OnTtsJobStatus += evt => statusEvents.Add(evt);
 
@@ -235,7 +238,7 @@ public class TtsJobProcessorTests : IDisposable
         var filePath = Path.Combine(_outputPath, "small-output.wav");
         await File.WriteAllBytesAsync(filePath, new byte[500]);
 
-        var eventBus = new OrchestratorEventBus();
+        var eventBus = new OrchestratorEventBus(NullLogger<OrchestratorEventBus>.Instance);
         var statusEvents = new List<TtsJobStatusEvent>();
         eventBus.OnTtsJobStatus += evt => statusEvents.Add(evt);
 
@@ -324,7 +327,7 @@ public class TtsJobProcessorTests : IDisposable
         context.TtsJobs.Add(job);
         await context.SaveChangesAsync();
 
-        var eventBus = new OrchestratorEventBus();
+        var eventBus = new OrchestratorEventBus(NullLogger<OrchestratorEventBus>.Instance);
         var receivedEvents = new List<TtsJobStatusEvent>();
         eventBus.OnTtsJobStatus += evt => receivedEvents.Add(evt);
 
@@ -373,7 +376,7 @@ public class TtsJobProcessorTests : IDisposable
         context.TtsJobs.AddRange(olderJob, newerJob);
         await context.SaveChangesAsync();
 
-        var eventBus = new OrchestratorEventBus();
+        var eventBus = new OrchestratorEventBus(NullLogger<OrchestratorEventBus>.Instance);
         var processingJobIds = new List<int>();
         eventBus.OnTtsJobStatus += evt =>
         {
@@ -414,7 +417,7 @@ public class TtsJobProcessorTests : IDisposable
         context.TtsJobs.Add(job);
         await context.SaveChangesAsync();
 
-        var eventBus = new OrchestratorEventBus();
+        var eventBus = new OrchestratorEventBus(NullLogger<OrchestratorEventBus>.Instance);
         var receivedEvents = new List<TtsJobStatusEvent>();
         eventBus.OnTtsJobStatus += evt => receivedEvents.Add(evt);
 
@@ -448,7 +451,7 @@ public class TtsJobProcessorTests : IDisposable
         context.TtsJobs.Add(job);
         await context.SaveChangesAsync();
 
-        var eventBus = new OrchestratorEventBus();
+        var eventBus = new OrchestratorEventBus(NullLogger<OrchestratorEventBus>.Instance);
         TtsJobStatusEvent? receivedEvent = null;
         eventBus.OnTtsJobStatus += evt => receivedEvent = evt;
 
@@ -565,7 +568,7 @@ public class TtsJobProcessorTests : IDisposable
         context.TtsJobs.Add(job);
         await context.SaveChangesAsync();
 
-        var eventBus = new OrchestratorEventBus();
+        var eventBus = new OrchestratorEventBus(NullLogger<OrchestratorEventBus>.Instance);
         var failedEvents = new List<TtsJobStatusEvent>();
         eventBus.OnTtsJobStatus += evt =>
         {
@@ -620,7 +623,7 @@ public class TtsJobProcessorTests : IDisposable
         var filePath = Path.Combine(_outputPath, "promote-test.wav");
         await File.WriteAllBytesAsync(filePath, new byte[5000]);
 
-        var eventBus = new OrchestratorEventBus();
+        var eventBus = new OrchestratorEventBus(NullLogger<OrchestratorEventBus>.Instance);
         TtsJobStatusEvent? statusEvent = null;
         TtsNotificationEvent? notificationEvent = null;
         eventBus.OnTtsJobStatus += evt => statusEvent = evt;
@@ -684,7 +687,7 @@ public class TtsJobProcessorTests : IDisposable
         var filePath = Path.Combine(_outputPath, "long-text.wav");
         await File.WriteAllBytesAsync(filePath, new byte[2000]);
 
-        var eventBus = new OrchestratorEventBus();
+        var eventBus = new OrchestratorEventBus(NullLogger<OrchestratorEventBus>.Instance);
         TtsNotificationEvent? notification = null;
         eventBus.OnTtsNotification += evt => notification = evt;
 
@@ -776,7 +779,7 @@ public class TtsJobProcessorTests : IDisposable
         context.TtsJobs.Add(job);
         await context.SaveChangesAsync();
 
-        var eventBus = new OrchestratorEventBus();
+        var eventBus = new OrchestratorEventBus(NullLogger<OrchestratorEventBus>.Instance);
         TtsJobStatusEvent? receivedEvent = null;
         eventBus.OnTtsJobStatus += evt => receivedEvent = evt;
 

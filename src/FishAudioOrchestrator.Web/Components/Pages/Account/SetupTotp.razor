@@ -1,9 +1,12 @@
 @page "/account/setup-totp"
 @attribute [Authorize]
 @using Microsoft.AspNetCore.Identity
+@using Microsoft.Extensions.Caching.Memory
+@using FishAudioOrchestrator.Web.Middleware
 @inject UserManager<AppUser> UserManager
 @inject ITotpService TotpService
 @inject NavigationManager Nav
+@inject IMemoryCache MemoryCache
 
 <PageTitle>Setup TOTP — Fish Audio Orchestrator</PageTitle>
 
@@ -89,6 +92,7 @@
         await UserManager.SetTwoFactorEnabledAsync(_user, true);
         _user.MustSetupTotp = false;
         await UserManager.UpdateAsync(_user);
+        PostLoginRedirectMiddleware.EvictUserCache(MemoryCache, _user.Id);
 
         Nav.NavigateTo("/", forceLoad: true);
     }

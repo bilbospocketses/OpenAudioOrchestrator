@@ -1,14 +1,15 @@
 using System.Diagnostics;
-using System.Text.Json;
-using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
 namespace FishAudioOrchestrator.Web.Services;
 
-public class SetupService
+/// <summary>
+/// Manages pre-flight checks and background downloads for the setup wizard.
+/// Registered as a singleton to persist download state across requests.
+/// </summary>
+public partial class SetupDownloadService
 {
-    private readonly IWebHostEnvironment _env;
-    private readonly ILogger<SetupService> _logger;
+    private readonly ILogger<SetupDownloadService> _logger;
     private Process? _modelDownloadProcess;
     private Process? _dockerPullProcess;
     private readonly List<string> _modelDownloadOutput = new();
@@ -21,11 +22,33 @@ public class SetupService
     public bool DockerPullCompleted { get; private set; }
     public string? ModelDownloadError { get; private set; }
     public string? DockerPullError { get; private set; }
+    public bool HasActiveDownloads => IsModelDownloading || IsDockerPulling;
 
-    public SetupService(IWebHostEnvironment env, ILogger<SetupService> logger)
+    // Docker image tags: [registry/]name[:tag] — alphanumeric, dots, hyphens, underscores, slashes, colons
+    [GeneratedRegex(@"^[a-zA-Z0-9][a-zA-Z0-9._/:-]*$")]
+    private static partial Regex ValidImageTagRegex();
+
+    // Characters that could enable shell injection when interpolated into process arguments
+    [GeneratedRegex(@"[`$|;&<>!""'\x00]")]
+    private static partial Regex UnsafePathCharsRegex();
+
+    public SetupDownloadService(ILogger<SetupDownloadService> logger)
     {
-        _env = env;
         _logger = logger;
+    }
+
+    internal static void ValidateImageTag(string imageTag)
+    {
+        if (string.IsNullOrWhiteSpace(imageTag) || !ValidImageTagRegex().IsMatch(imageTag))
+            throw new ArgumentException($"Invalid Docker image tag format: {imageTag}");
+    }
+
+    internal static void ValidatePath(string path, string paramName)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            throw new ArgumentException($"{paramName} cannot be empty.");
+        if (UnsafePathCharsRegex().IsMatch(path))
+            throw new ArgumentException($"{paramName} contains unsafe characters: {path}");
     }
 
     // --- Pre-checks ---
@@ -34,7 +57,7 @@ public class SetupService
     {
         try
         {
-            var (exitCode, output) = await RunCommandAsync("git", "--version");
+            var (exitCode, _) = await RunCommandAsync("git", "--version");
             if (exitCode != 0)
                 return (false, "Git is not installed. Install it from PowerShell:\nwinget install Git.Git\nThen click Retry.");
             return (true, null);
@@ -49,7 +72,7 @@ public class SetupService
     {
         try
         {
-            var (exitCode, output) = await RunCommandAsync("git", "lfs version");
+            var (exitCode, _) = await RunCommandAsync("git", "lfs version");
             if (exitCode != 0)
                 return (false, "Git LFS is not installed. Run the following in PowerShell:\ngit lfs install\nThen click Retry.");
             return (true, null);
@@ -64,7 +87,7 @@ public class SetupService
     {
         try
         {
-            var (exitCode, output) = await RunCommandAsync("docker", "version --format '{{.Server.Version}}'");
+            var (exitCode, _) = await RunCommandAsync("docker", "version --format '{{.Server.Version}}'");
             if (exitCode != 0)
                 return (false, "Docker is not responding. Ensure Docker Desktop is installed and running.");
             return (true, null);
@@ -79,6 +102,7 @@ public class SetupService
     {
         try
         {
+            ValidateImageTag(imageTag);
             var (exitCode, output) = await RunCommandAsync("docker", $"images -q {imageTag}");
             return exitCode == 0 && !string.IsNullOrWhiteSpace(output);
         }
@@ -99,6 +123,8 @@ public class SetupService
     public void StartModelDownload(string checkpointsDir, Action? onOutput = null)
     {
         if (IsModelDownloading) return;
+
+        ValidatePath(checkpointsDir, nameof(checkpointsDir));
 
         ModelDownloadCompleted = false;
         ModelDownloadError = null;
@@ -122,6 +148,8 @@ public class SetupService
     public void StartDockerPull(string imageTag, Action? onOutput = null)
     {
         if (IsDockerPulling) return;
+
+        ValidateImageTag(imageTag);
 
         DockerPullCompleted = false;
         DockerPullError = null;
@@ -148,76 +176,6 @@ public class SetupService
     public List<string> GetDockerPullOutput()
     {
         lock (_lock) { return _dockerPullOutput.ToList(); }
-    }
-
-    public bool HasActiveDownloads => IsModelDownloading || IsDockerPulling;
-
-    // --- Settings writer ---
-
-    public async Task SaveSettingsAsync(
-        string checkpointsDir,
-        string referencesDir,
-        string outputDir,
-        int portStart,
-        int portEnd,
-        string? domain,
-        string? email)
-    {
-        var settingsPath = Path.Combine(_env.ContentRootPath, "appsettings.json");
-        var json = await File.ReadAllTextAsync(settingsPath);
-        var root = JsonNode.Parse(json, documentOptions: new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip })!;
-
-        // Derive DataRoot as the common parent of the three directories
-        var dataRoot = Path.GetDirectoryName(checkpointsDir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
-                       ?? checkpointsDir;
-
-        // ConnectionStrings
-        root["ConnectionStrings"]!["Default"] = $"Data Source={Path.Combine(dataRoot, "fishorch.db")}";
-
-        // FishOrchestrator
-        var fish = root["FishOrchestrator"]!;
-        fish["DataRoot"] = dataRoot;
-        fish["PortRange"]!["Start"] = portStart;
-        fish["PortRange"]!["End"] = portEnd;
-        fish["Domain"] = domain ?? "";
-
-        // LettuceEncrypt
-        var le = root["LettuceEncrypt"]!;
-        if (!string.IsNullOrWhiteSpace(domain))
-        {
-            le["DomainNames"] = new JsonArray(domain);
-            le["EmailAddress"] = email ?? "";
-        }
-        else
-        {
-            le["DomainNames"] = new JsonArray();
-            le["EmailAddress"] = "";
-        }
-
-        var options = new JsonSerializerOptions { WriteIndented = true };
-        var output = root.ToJsonString(options);
-        await File.WriteAllTextAsync(settingsPath, output);
-
-        _logger.LogInformation("Settings saved to {Path}", settingsPath);
-    }
-
-    // --- Validation helpers ---
-
-    public static bool IsValidDomain(string domain)
-    {
-        if (string.IsNullOrWhiteSpace(domain)) return false;
-        return Regex.IsMatch(domain, @"^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+$");
-    }
-
-    public static bool IsValidEmail(string email)
-    {
-        if (string.IsNullOrWhiteSpace(email)) return false;
-        return Regex.IsMatch(email, @"^[^@\s]+@[^@\s]+\.[^@\s]+$");
-    }
-
-    public static bool IsValidPort(int port)
-    {
-        return port >= 1024 && port <= 65535;
     }
 
     // --- Internals ---

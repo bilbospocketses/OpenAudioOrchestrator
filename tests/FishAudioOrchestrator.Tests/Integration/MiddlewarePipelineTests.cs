@@ -1,6 +1,8 @@
 using System.Net;
 using FishAudioOrchestrator.Web.Data.Entities;
+using FishAudioOrchestrator.Web.Middleware;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace FishAudioOrchestrator.Tests.Integration;
@@ -52,13 +54,15 @@ public class MiddlewarePipelineTests : IClassFixture<CustomWebApplicationFactory
     [Fact]
     public async Task MustChangePassword_RedirectsToChangePassword()
     {
-        // Flag the user as needing password change
+        // Flag the user as needing password change and evict middleware cache
         using (var scope = _factory.Services.CreateScope())
         {
             var userMgr = scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>();
             var user = await userMgr.FindByNameAsync(CustomWebApplicationFactory.UserUsername);
             user!.MustChangePassword = true;
             await userMgr.UpdateAsync(user);
+            var cache = scope.ServiceProvider.GetRequiredService<IMemoryCache>();
+            PostLoginRedirectMiddleware.EvictUserCache(cache, user.Id);
         }
 
         try
@@ -78,6 +82,8 @@ public class MiddlewarePipelineTests : IClassFixture<CustomWebApplicationFactory
             var user = await userMgr.FindByNameAsync(CustomWebApplicationFactory.UserUsername);
             user!.MustChangePassword = false;
             await userMgr.UpdateAsync(user);
+            var cache = scope.ServiceProvider.GetRequiredService<IMemoryCache>();
+            PostLoginRedirectMiddleware.EvictUserCache(cache, user.Id);
         }
     }
 
@@ -90,6 +96,8 @@ public class MiddlewarePipelineTests : IClassFixture<CustomWebApplicationFactory
             var user = await userMgr.FindByNameAsync(CustomWebApplicationFactory.UserUsername);
             user!.MustSetupTotp = true;
             await userMgr.UpdateAsync(user);
+            var cache = scope.ServiceProvider.GetRequiredService<IMemoryCache>();
+            PostLoginRedirectMiddleware.EvictUserCache(cache, user.Id);
         }
 
         try
@@ -109,6 +117,8 @@ public class MiddlewarePipelineTests : IClassFixture<CustomWebApplicationFactory
             var user = await userMgr.FindByNameAsync(CustomWebApplicationFactory.UserUsername);
             user!.MustSetupTotp = false;
             await userMgr.UpdateAsync(user);
+            var cache = scope.ServiceProvider.GetRequiredService<IMemoryCache>();
+            PostLoginRedirectMiddleware.EvictUserCache(cache, user.Id);
         }
     }
 
@@ -122,7 +132,7 @@ public class MiddlewarePipelineTests : IClassFixture<CustomWebApplicationFactory
         Assert.Equal(HttpStatusCode.OK, authed.StatusCode);
 
         // Sign out
-        await client.GetAsync("/api/auth/signout");
+        await client.PostAsync("/api/auth/signout", null);
 
         // Try to access protected page
         var response = await client.GetAsync("/");

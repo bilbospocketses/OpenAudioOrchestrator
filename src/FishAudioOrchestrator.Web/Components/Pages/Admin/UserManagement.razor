@@ -2,8 +2,13 @@
 @attribute [Authorize(Roles = "Admin")]
 @using Microsoft.AspNetCore.Identity
 @using Microsoft.EntityFrameworkCore
+@using Microsoft.Extensions.Caching.Memory
+@using FishAudioOrchestrator.Web.Data
+@using FishAudioOrchestrator.Web.Middleware
 @inject UserManager<AppUser> UserManager
+@inject IDbContextFactory<AppDbContext> DbFactory
 @inject NavigationManager Nav
+@inject IMemoryCache MemoryCache
 
 <PageTitle>User Management — Fish Audio Orchestrator</PageTitle>
 
@@ -173,21 +178,21 @@
 
     private async Task LoadUsers()
     {
-        var users = await UserManager.Users.ToListAsync();
-        _users = new List<UserRow>();
-        foreach (var u in users)
-        {
-            var roles = await UserManager.GetRolesAsync(u);
-            _users.Add(new UserRow
-            {
-                Id = u.Id,
-                UserName = u.UserName!,
-                DisplayName = u.DisplayName,
-                Role = roles.FirstOrDefault() ?? "User",
-                TotpEnabled = u.TwoFactorEnabled,
-                CreatedAt = u.CreatedAt
-            });
-        }
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _users = await (from u in db.Users.OfType<AppUser>()
+                        join ur in db.UserRoles on u.Id equals ur.UserId into userRoles
+                        from ur in userRoles.DefaultIfEmpty()
+                        join r in db.Roles on ur.RoleId equals r.Id into roles
+                        from r in roles.DefaultIfEmpty()
+                        select new UserRow
+                        {
+                            Id = u.Id,
+                            UserName = u.UserName!,
+                            DisplayName = u.DisplayName,
+                            Role = r != null ? r.Name! : "User",
+                            TotpEnabled = u.TwoFactorEnabled,
+                            CreatedAt = u.CreatedAt
+                        }).ToListAsync();
     }
 
     private async Task CreateUser()
@@ -287,6 +292,7 @@
 
         user.MustChangePassword = true;
         await UserManager.UpdateAsync(user);
+        PostLoginRedirectMiddleware.EvictUserCache(MemoryCache, user.Id);
 
         _message = $"Password reset for '{user.UserName}'.";
         _resetUser = null;

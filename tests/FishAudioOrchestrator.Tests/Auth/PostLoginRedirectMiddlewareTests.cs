@@ -21,6 +21,7 @@ public class PostLoginRedirectMiddlewareTests
             .AddRoles<IdentityRole>()
             .AddEntityFrameworkStores<AppDbContext>();
         services.AddLogging();
+        services.AddMemoryCache();
         var sp = services.BuildServiceProvider();
         var db = sp.GetRequiredService<AppDbContext>();
         db.Database.EnsureCreated();

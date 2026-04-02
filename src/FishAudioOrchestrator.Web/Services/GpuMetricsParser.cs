@@ -36,7 +36,9 @@ public static class GpuMetricsParser
             using var process = System.Diagnostics.Process.Start(psi);
             if (process is null) return null;
             var output = await process.StandardOutput.ReadToEndAsync();
-            await process.WaitForExitAsync();
+            using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(5));
+            try { await process.WaitForExitAsync(cts.Token); }
+            catch (OperationCanceledException) { try { process.Kill(); } catch { } return null; }
             return Parse(output);
         }
         catch

@@ -292,6 +292,7 @@ else
 
         _jobs.Add(job);
         _inputText = "";
+        TtsJobProcessor.SignalNewJob();
     }
 
     private async Task CancelJob(TtsJob job)
@@ -305,12 +306,18 @@ else
     private async Task RetryJob(TtsJob job)
     {
         await using var db = await DbFactory.CreateDbContextAsync();
-        db.Attach(job);
+        var entity = await db.TtsJobs.FindAsync(job.Id);
+        if (entity is null) return;
+
+        entity.Status = TtsJobStatus.Queued;
+        entity.ErrorMessage = null;
+        entity.StartedAt = null;
+        entity.CompletedAt = null;
+        await db.SaveChangesAsync();
+
         job.Status = TtsJobStatus.Queued;
         job.ErrorMessage = null;
-        job.StartedAt = null;
-        job.CompletedAt = null;
-        await db.SaveChangesAsync();
+        TtsJobProcessor.SignalNewJob();
     }
 
     private async Task DismissJob(TtsJob job)

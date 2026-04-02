@@ -20,7 +20,7 @@ public class HealthMonitorService : BackgroundService
     private readonly IHubContext<OrchestratorHub> _hub;
     private readonly GpuMetricsState _gpuState;
     private readonly OrchestratorEventBus _eventBus;
-    private int _consecutiveFailures;
+    private volatile int _consecutiveFailures;
 
     public HealthMonitorService(
         IServiceScopeFactory scopeFactory,
@@ -96,7 +96,7 @@ public class HealthMonitorService : BackgroundService
 
         if (running is null || running.ContainerId is null)
         {
-            _consecutiveFailures = 0;
+            Interlocked.Exchange(ref _consecutiveFailures, 0);
             return;
         }
 
@@ -126,7 +126,7 @@ public class HealthMonitorService : BackgroundService
 
         if (healthy)
         {
-            _consecutiveFailures = 0;
+            Interlocked.Exchange(ref _consecutiveFailures, 0);
             if (running.Status != ModelStatus.Running)
             {
                 running.Status = ModelStatus.Running;
@@ -135,12 +135,12 @@ public class HealthMonitorService : BackgroundService
         }
         else
         {
-            _consecutiveFailures++;
+            var failures = Interlocked.Increment(ref _consecutiveFailures);
             _logger.LogWarning(
                 "Health check failed for {ModelName} ({Failures} consecutive)",
-                running.Name, _consecutiveFailures);
+                running.Name, failures);
 
-            if (_consecutiveFailures >= 5)
+            if (failures >= 5)
             {
                 running.Status = ModelStatus.Error;
                 await context.SaveChangesAsync();

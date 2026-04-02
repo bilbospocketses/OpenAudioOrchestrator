@@ -1,4 +1,7 @@
-using System.Diagnostics;
+using System.Text;
+using System.Text.RegularExpressions;
+using Docker.DotNet;
+using Docker.DotNet.Models;
 using FishAudioOrchestrator.Web.Data;
 using FishAudioOrchestrator.Web.Data.Entities;
 using FishAudioOrchestrator.Web.Hubs;
@@ -6,26 +9,51 @@ using Microsoft.EntityFrameworkCore;
 
 namespace FishAudioOrchestrator.Web.Services;
 
-public class TtsJobProcessor : BackgroundService
+public partial class TtsJobProcessor : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly IDockerClient _docker;
     private readonly OrchestratorEventBus _eventBus;
     private readonly ILogger<TtsJobProcessor> _logger;
     private readonly string _outputPath;
     private static readonly TimeSpan JobTimeout = TimeSpan.FromHours(2);
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(5);
 
+    [GeneratedRegex(@"^[a-f0-9]{12,64}$")]
+    private static partial Regex ValidContainerIdRegex();
+
     public TtsJobProcessor(
         IServiceScopeFactory scopeFactory,
+        IDockerClient docker,
         OrchestratorEventBus eventBus,
         ILogger<TtsJobProcessor> logger,
         IConfiguration config)
     {
         _scopeFactory = scopeFactory;
+        _docker = docker;
         _eventBus = eventBus;
         _logger = logger;
         var dataRoot = config["FishOrchestrator:DataRoot"] ?? @"C:\MyFishAudioProj";
         _outputPath = Path.Combine(dataRoot, "Output");
+    }
+
+    private static readonly SemaphoreSlim _jobSignal = new(0);
+
+    /// <summary>
+    /// Signal the processor that a new job has been queued.
+    /// Called from the UI after inserting a TtsJob.
+    /// </summary>
+    public static void SignalNewJob()
+    {
+        // Release is safe to call even if no one is waiting;
+        // the semaphore count just increments.
+        _jobSignal.Release();
+    }
+
+    private static void ValidateContainerId(string containerId)
+    {
+        if (!ValidContainerIdRegex().IsMatch(containerId))
+            throw new ArgumentException($"Invalid container ID format: {containerId}");
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -47,7 +75,9 @@ public class TtsJobProcessor : BackgroundService
                 _logger.LogError(ex, "Error in TTS job processor loop");
             }
 
-            await Task.Delay(2000, stoppingToken);
+            // Wait for a signal from the UI or poll every 30 seconds as a safety net
+            try { await _jobSignal.WaitAsync(TimeSpan.FromSeconds(30), stoppingToken); }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
         }
     }
 
@@ -117,8 +147,10 @@ public class TtsJobProcessor : BackgroundService
             return;
         }
 
-        // Build the curl command — write JSON to a temp file in the mounted
-        // output directory so curl can read it from inside the container
+        ValidateContainerId(model.ContainerId);
+
+        // Write the JSON request to a temp file in the mounted output directory
+        // so curl can read it from inside the container
         var request = new TtsRequest
         {
             Text = job.InputText,
@@ -133,38 +165,37 @@ public class TtsJobProcessor : BackgroundService
 
         await File.WriteAllTextAsync(requestFilePath, json);
 
-        var dockerArgs = $"exec {model.ContainerId} curl -s -X POST http://localhost:8080/v1/tts " +
-                         $"-H \"Content-Type: application/json\" " +
-                         $"-d @{containerRequestPath} " +
-                         $"--output {containerOutputPath} " +
-                         $"--max-time 7200";
-
         _logger.LogInformation("Starting docker exec curl for job {JobId}", job.Id);
 
         try
         {
-            var psi = new ProcessStartInfo
-            {
-                FileName = "docker",
-                Arguments = dockerArgs,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
+            // Create an exec instance inside the container via Docker SDK
+            var execCreateResponse = await _docker.Exec.ExecCreateContainerAsync(
+                model.ContainerId,
+                new ContainerExecCreateParameters
+                {
+                    Cmd = new[]
+                    {
+                        "curl", "-s", "-X", "POST",
+                        "http://localhost:8080/v1/tts",
+                        "-H", "Content-Type: application/json",
+                        "-d", $"@{containerRequestPath}",
+                        "--output", containerOutputPath,
+                        "--max-time", "7200"
+                    },
+                    AttachStdout = true,
+                    AttachStderr = true
+                },
+                stoppingToken);
 
-            using var process = Process.Start(psi);
-            if (process is null)
-            {
-                await FailJob(db, job, "Failed to start docker exec process");
-                return;
-            }
+            var execId = execCreateResponse.ID;
 
-            // Start reading stderr immediately to prevent pipe buffer deadlock
-            var stderrTask = process.StandardError.ReadToEndAsync();
+            // Start the exec (attached so Docker tracks it, but we poll for the output file)
+            using var stream = await _docker.Exec.StartAndAttachContainerExecAsync(
+                execId, tty: false, stoppingToken);
 
             // Poll for completion: check file, job status (for cancel), and timeout
-            await PollForOutputFileAsync(db, job, stoppingToken, process, stderrTask);
+            await PollForOutputFileAsync(db, job, stoppingToken, execId, stream, model.ContainerId);
         }
         catch (Exception ex)
         {
@@ -179,7 +210,8 @@ public class TtsJobProcessor : BackgroundService
     }
 
     private async Task PollForOutputFileAsync(AppDbContext db, TtsJob job,
-        CancellationToken stoppingToken, Process? process = null, Task<string>? stderrTask = null)
+        CancellationToken stoppingToken, string? execId = null, MultiplexedStream? execStream = null,
+        string? containerId = null)
     {
         var filePath = Path.Combine(_outputPath, job.OutputFileName);
         var startTime = job.StartedAt ?? DateTimeOffset.UtcNow;
@@ -195,43 +227,47 @@ public class TtsJobProcessor : BackgroundService
                 return;
             }
 
-            // Check if docker exec process exited (success or error)
-            if (process is not null && process.HasExited)
+            // Check if the exec has finished (via Docker SDK inspect)
+            if (execId is not null)
             {
-                if (File.Exists(filePath))
+                var execInspect = await _docker.Exec.InspectContainerExecAsync(execId, CancellationToken.None);
+                if (!execInspect.Running)
                 {
-                    var fileSize = new FileInfo(filePath).Length;
-                    if (fileSize > 1000)
+                    if (File.Exists(filePath))
                     {
-                        // Valid audio file (error responses are typically < 200 bytes)
-                        _logger.LogInformation("Job {JobId} completed — output file found ({Size} bytes)", job.Id, fileSize);
-                        await Task.Delay(1000, CancellationToken.None);
-                        var duration = (long)(DateTimeOffset.UtcNow - startTime).TotalMilliseconds;
-                        PromoteToGenerationLog(db, job, duration);
-                        await db.SaveChangesAsync(CancellationToken.None);
-                        return;
+                        var fileSize = new FileInfo(filePath).Length;
+                        if (fileSize > 1000)
+                        {
+                            _logger.LogInformation("Job {JobId} completed — output file found ({Size} bytes)", job.Id, fileSize);
+                            await Task.Delay(1000, CancellationToken.None);
+                            var duration = (long)(DateTimeOffset.UtcNow - startTime).TotalMilliseconds;
+                            PromoteToGenerationLog(db, job, duration);
+                            await db.SaveChangesAsync(CancellationToken.None);
+                            return;
+                        }
+                        else
+                        {
+                            var errorContent = await File.ReadAllTextAsync(filePath);
+                            _logger.LogError("TTS API returned error for job {JobId}: {Error}", job.Id, errorContent);
+                            try { File.Delete(filePath); } catch { }
+                            await FailJob(db, job, $"TTS API error: {errorContent}");
+                            return;
+                        }
                     }
                     else
                     {
-                        // Small file = error response from API, read it for the error message
-                        var errorContent = await File.ReadAllTextAsync(filePath);
-                        _logger.LogError("TTS API returned error for job {JobId}: {Error}", job.Id, errorContent);
-                        try { File.Delete(filePath); } catch { }
-                        await FailJob(db, job, $"TTS API error: {errorContent}");
+                        // Read stderr from the exec stream if available
+                        var stderr = await ReadExecStreamAsync(execStream);
+                        _logger.LogError("docker exec failed for job {JobId} (exit code {ExitCode}): {Error}",
+                            job.Id, execInspect.ExitCode, stderr);
+                        await FailJob(db, job, $"docker exec failed (exit code {execInspect.ExitCode}): {stderr}");
                         return;
                     }
                 }
-                else
-                {
-                    var stderr = stderrTask is not null ? await stderrTask : "";
-                    _logger.LogError("docker exec failed for job {JobId}: {Error}", job.Id, stderr);
-                    await FailJob(db, job, $"docker exec failed: {stderr}");
-                    return;
-                }
             }
 
-            // Check if file appeared (for recovery polling without a process reference)
-            if (process is null && File.Exists(filePath) && new FileInfo(filePath).Length > 1000)
+            // Check if file appeared (for recovery polling without an exec reference)
+            if (execId is null && File.Exists(filePath) && new FileInfo(filePath).Length > 1000)
             {
                 _logger.LogInformation("Job {JobId} completed — output file found during recovery", job.Id);
                 await Task.Delay(1000, CancellationToken.None);
@@ -250,10 +286,9 @@ public class TtsJobProcessor : BackgroundService
             if (currentStatus == TtsJobStatus.Failed || currentStatus == default)
             {
                 _logger.LogInformation("Job {JobId} was cancelled", job.Id);
-                if (process is not null && !process.HasExited)
-                {
-                    try { process.Kill(); } catch { }
-                }
+                // Ensure curl is stopped even if CancelJobAsync hasn't killed it yet
+                if (containerId is not null)
+                    await KillCurlInContainerAsync(containerId);
                 return;
             }
 
@@ -261,13 +296,24 @@ public class TtsJobProcessor : BackgroundService
             if (DateTimeOffset.UtcNow - startTime > JobTimeout)
             {
                 _logger.LogWarning("Job {JobId} timed out after {Hours} hours", job.Id, JobTimeout.TotalHours);
-                if (process is not null && !process.HasExited)
-                {
-                    try { process.Kill(); } catch { }
-                }
                 await FailJob(db, job, $"Generation timed out after {JobTimeout.TotalHours} hours");
                 return;
             }
+        }
+    }
+
+    private static async Task<string> ReadExecStreamAsync(MultiplexedStream? stream)
+    {
+        if (stream is null) return "";
+        try
+        {
+            var buffer = new byte[4096];
+            var result = await stream.ReadOutputAsync(buffer, 0, buffer.Length, CancellationToken.None);
+            return result.Count > 0 ? Encoding.UTF8.GetString(buffer, 0, result.Count) : "";
+        }
+        catch
+        {
+            return "";
         }
     }
 
@@ -286,7 +332,7 @@ public class TtsJobProcessor : BackgroundService
 
         if (job is null) return;
 
-        // Kill curl inside the container
+        // Kill curl inside the container via Docker SDK
         if (job.ModelProfile?.ContainerId is not null)
         {
             await KillCurlInContainerAsync(job.ModelProfile.ContainerId);
@@ -351,22 +397,28 @@ public class TtsJobProcessor : BackgroundService
         _eventBus.RaiseTtsNotification(notification);
     }
 
-    private static async Task<bool> IsCurlRunningAsync(string containerId)
+    private async Task<bool> IsCurlRunningAsync(string containerId)
     {
         try
         {
-            var psi = new ProcessStartInfo
-            {
-                FileName = "docker",
-                Arguments = $"exec {containerId} pgrep -f curl",
-                RedirectStandardOutput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-            using var process = Process.Start(psi);
-            if (process is null) return false;
-            await process.WaitForExitAsync();
-            return process.ExitCode == 0;
+            ValidateContainerId(containerId);
+            var execCreateResponse = await _docker.Exec.ExecCreateContainerAsync(
+                containerId,
+                new ContainerExecCreateParameters
+                {
+                    Cmd = new[] { "pgrep", "-f", "curl" },
+                    AttachStdout = true
+                });
+
+            using var stream = await _docker.Exec.StartAndAttachContainerExecAsync(
+                execCreateResponse.ID, tty: false);
+
+            // Read output to let the exec complete
+            var buffer = new byte[1024];
+            await stream.ReadOutputAsync(buffer, 0, buffer.Length, CancellationToken.None);
+
+            var inspect = await _docker.Exec.InspectContainerExecAsync(execCreateResponse.ID);
+            return inspect.ExitCode == 0;
         }
         catch
         {
@@ -374,21 +426,25 @@ public class TtsJobProcessor : BackgroundService
         }
     }
 
-    private static async Task KillCurlInContainerAsync(string containerId)
+    private async Task KillCurlInContainerAsync(string containerId)
     {
         try
         {
-            var psi = new ProcessStartInfo
-            {
-                FileName = "docker",
-                Arguments = $"exec {containerId} pkill -f curl",
-                RedirectStandardOutput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-            using var process = Process.Start(psi);
-            if (process is not null)
-                await process.WaitForExitAsync();
+            ValidateContainerId(containerId);
+            var execCreateResponse = await _docker.Exec.ExecCreateContainerAsync(
+                containerId,
+                new ContainerExecCreateParameters
+                {
+                    Cmd = new[] { "pkill", "-f", "curl" },
+                    AttachStdout = true
+                });
+
+            using var stream = await _docker.Exec.StartAndAttachContainerExecAsync(
+                execCreateResponse.ID, tty: false);
+
+            // Read to completion
+            var buffer = new byte[1024];
+            await stream.ReadOutputAsync(buffer, 0, buffer.Length, CancellationToken.None);
         }
         catch { }
     }
