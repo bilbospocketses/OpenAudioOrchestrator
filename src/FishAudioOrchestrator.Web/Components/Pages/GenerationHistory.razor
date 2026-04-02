@@ -180,9 +180,10 @@ else
             return;
 
         var dataRoot = Config["FishOrchestrator:DataRoot"] ?? @"C:\MyFishAudioProj";
-        var filePath = Path.Combine(dataRoot, "Output", log.OutputFileName);
+        var outputRoot = Path.GetFullPath(Path.Combine(dataRoot, "Output"));
+        var filePath = Path.GetFullPath(Path.Combine(outputRoot, log.OutputFileName));
 
-        if (File.Exists(filePath))
+        if (filePath.StartsWith(outputRoot + Path.DirectorySeparatorChar) && File.Exists(filePath))
         {
             File.Delete(filePath);
         }
