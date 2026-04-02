@@ -44,13 +44,19 @@ public static class AuthEndpoints
             return Results.Redirect("/");
         }).RequireRateLimiting("auth");
 
-        app.MapGet("/api/auth/signin", async (
-            string token,
-            string? returnUrl,
+        app.MapPost("/api/auth/signin", async (
+            HttpContext httpContext,
             SignInManager<AppUser> signInManager,
             UserManager<AppUser> userManager,
             IMemoryCache cache) =>
         {
+            var form = await httpContext.Request.ReadFormAsync();
+            var token = form["token"].ToString();
+            var returnUrl = form["returnUrl"].ToString();
+
+            if (string.IsNullOrEmpty(token))
+                return Results.Redirect("/login?error=invalid");
+
             // Validate the one-time TOTP completion token
             var cacheKey = $"totp-verified:{token}";
             if (!cache.TryGetValue(cacheKey, out string? userId) || userId is null)
@@ -72,7 +78,7 @@ public static class AuthEndpoints
                 return Results.Redirect(returnUrl);
 
             return Results.Redirect("/");
-        });
+        }).RequireRateLimiting("auth");
 
         app.MapPost("/api/auth/signout", async (SignInManager<AppUser> signInManager) =>
         {

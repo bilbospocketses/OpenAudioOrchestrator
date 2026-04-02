@@ -6,6 +6,7 @@
 @inject UserManager<AppUser> UserManager
 @inject NavigationManager Nav
 @inject IMemoryCache Cache
+@inject IJSRuntime JS
 @layout EmptyLayout
 
 <PageTitle>Verify TOTP — Fish Audio Orchestrator</PageTitle>
@@ -53,6 +54,10 @@
         </div>
     </div>
 </div>
+
+<form id="signin-form" method="post" action="/api/auth/signin" style="display:none;">
+    <input type="hidden" name="token" id="signin-token" />
+</form>
 
 @implements IDisposable
 
@@ -157,7 +162,8 @@
         var token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
         Cache.Set($"totp-verified:{token}", _user.Id, TimeSpan.FromSeconds(60));
 
-        Nav.NavigateTo($"/api/auth/signin?token={Uri.EscapeDataString(token)}", forceLoad: true);
+        await JS.InvokeVoidAsync("eval",
+            $"document.getElementById('signin-token').value='{Uri.EscapeDataString(token)}';document.getElementById('signin-form').submit();");
     }
 
     public void Dispose()
