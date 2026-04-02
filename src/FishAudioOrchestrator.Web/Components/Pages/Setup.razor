@@ -692,7 +692,6 @@
         {
             try
             {
-                // Close connections so the file can be moved
                 // EF Core SQLite holds the connection; we need to copy instead of move
                 var targetDir = Path.GetDirectoryName(targetDbPath);
                 if (targetDir is not null && !Directory.Exists(targetDir))
@@ -704,6 +703,19 @@
                 var shmSrc = currentDbPath + "-shm";
                 if (File.Exists(walSrc)) File.Copy(walSrc, targetDbPath + "-wal", overwrite: true);
                 if (File.Exists(shmSrc)) File.Copy(shmSrc, targetDbPath + "-shm", overwrite: true);
+
+                // Clean up the original files so we don't leave crud behind
+                try { File.Delete(currentDbPath); } catch { }
+                try { if (File.Exists(walSrc)) File.Delete(walSrc); } catch { }
+                try { if (File.Exists(shmSrc)) File.Delete(shmSrc); } catch { }
+
+                // If the original directory is now empty, remove it too
+                var originalDir = Path.GetDirectoryName(currentDbPath);
+                if (originalDir is not null && Directory.Exists(originalDir)
+                    && !Directory.EnumerateFileSystemEntries(originalDir).Any())
+                {
+                    try { Directory.Delete(originalDir); } catch { }
+                }
             }
             catch (Exception ex)
             {
