@@ -180,7 +180,15 @@ app.Use(async (context, next) =>
     headers["X-Content-Type-Options"] = "nosniff";
     headers["X-Frame-Options"] = "DENY";
     headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
-    headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;";
+    headers["Content-Security-Policy"] =
+        "default-src 'self'; " +
+        "script-src 'self' 'unsafe-inline'; " +  // Required: Blazor Server injects inline scripts for circuit management
+        "style-src 'self' 'unsafe-inline'; " +   // Required: Blazor scoped CSS uses inline styles
+        "img-src 'self' data:; " +               // data: needed for TOTP QR codes
+        "connect-src 'self'; " +                 // WebSocket (SignalR) + fetch to same origin
+        "frame-ancestors 'none'; " +
+        "base-uri 'self'; " +
+        "form-action 'self'";
     await next();
 });
 
