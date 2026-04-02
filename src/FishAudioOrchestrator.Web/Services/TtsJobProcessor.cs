@@ -1,5 +1,4 @@
 using System.Text;
-using System.Text.RegularExpressions;
 using Docker.DotNet;
 using Docker.DotNet.Models;
 using FishAudioOrchestrator.Web.Data;
@@ -9,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace FishAudioOrchestrator.Web.Services;
 
-public partial class TtsJobProcessor : BackgroundService
+public class TtsJobProcessor : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IDockerClient _docker;
@@ -18,9 +17,6 @@ public partial class TtsJobProcessor : BackgroundService
     private readonly string _outputPath;
     private static readonly TimeSpan JobTimeout = TimeSpan.FromHours(2);
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(5);
-
-    [GeneratedRegex(@"^[a-f0-9]{12,64}$")]
-    private static partial Regex ValidContainerIdRegex();
 
     public TtsJobProcessor(
         IServiceScopeFactory scopeFactory,
@@ -52,7 +48,7 @@ public partial class TtsJobProcessor : BackgroundService
 
     private static void ValidateContainerId(string containerId)
     {
-        if (!ValidContainerIdRegex().IsMatch(containerId))
+        if (!ContainerIdValidator.IsValid(containerId))
             throw new ArgumentException($"Invalid container ID format: {containerId}");
     }
 

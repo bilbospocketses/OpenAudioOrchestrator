@@ -20,6 +20,8 @@ public class OrchestratorHub : Hub
 
     public async Task SubscribeLogs(string containerId)
     {
+        if (!ContainerIdValidator.IsValid(containerId)) return;
+
         await using var db = await _dbFactory.CreateDbContextAsync();
         var isKnown = await db.ModelProfiles.AnyAsync(m => m.ContainerId == containerId);
         if (!isKnown) return;
@@ -29,6 +31,8 @@ public class OrchestratorHub : Hub
 
     public async Task UnsubscribeLogs(string containerId)
     {
+        if (!ContainerIdValidator.IsValid(containerId)) return;
+
         await _logService.UnsubscribeAsync(containerId, Context.ConnectionId);
     }
 

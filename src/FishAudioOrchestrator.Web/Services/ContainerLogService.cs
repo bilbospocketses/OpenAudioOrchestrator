@@ -25,6 +25,8 @@ public class ContainerLogService : IContainerLogService
 
     public Task SubscribeAsync(string containerId, string connectionId)
     {
+        if (!ContainerIdValidator.IsValid(containerId)) return Task.CompletedTask;
+
         var stream = _streams.GetOrAdd(containerId, _ => new ContainerLogStream());
 
         lock (stream.Lock)
@@ -43,6 +45,8 @@ public class ContainerLogService : IContainerLogService
 
     public Task UnsubscribeAsync(string containerId, string connectionId)
     {
+        if (!ContainerIdValidator.IsValid(containerId)) return Task.CompletedTask;
+
         if (!_streams.TryGetValue(containerId, out var stream))
             return Task.CompletedTask;
 
@@ -103,6 +107,8 @@ public class ContainerLogService : IContainerLogService
 
     public void SubscribeCallback(string containerId, string subscriberId, Action<LogLineEvent> callback)
     {
+        if (!ContainerIdValidator.IsValid(containerId)) return;
+
         var subs = _callbackSubscribers.GetOrAdd(containerId, _ => new ConcurrentDictionary<string, Action<LogLineEvent>>());
         subs[subscriberId] = callback;
 
