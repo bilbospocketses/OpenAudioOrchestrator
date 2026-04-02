@@ -1,9 +1,12 @@
 using FishAudioOrchestrator.Web.Data.Entities;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Caching.Memory;
+using System.Security.Claims;
 using System.Security.Cryptography;
 
 namespace FishAudioOrchestrator.Web.Endpoints;
+
+public record ThemeRequest(string Theme);
 
 public static class AuthEndpoints
 {
@@ -85,5 +88,35 @@ public static class AuthEndpoints
             await signInManager.SignOutAsync();
             return Results.Redirect("/login");
         });
+
+        app.MapPost("/api/auth/theme", async (
+            HttpContext httpContext,
+            ThemeRequest body,
+            UserManager<AppUser> userManager) =>
+        {
+            if (body.Theme != "dark" && body.Theme != "light")
+                return Results.BadRequest("Theme must be 'dark' or 'light'.");
+
+            var userId = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var user = await userManager.FindByIdAsync(userId!);
+            if (user is null)
+                return Results.Unauthorized();
+
+            user.ThemePreference = body.Theme;
+            await userManager.UpdateAsync(user);
+            return Results.Ok();
+        }).RequireAuthorization();
+
+        app.MapGet("/api/auth/theme", async (
+            HttpContext httpContext,
+            UserManager<AppUser> userManager) =>
+        {
+            var userId = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var user = await userManager.FindByIdAsync(userId!);
+            if (user is null)
+                return Results.Unauthorized();
+
+            return Results.Ok(new { theme = user.ThemePreference });
+        }).RequireAuthorization();
     }
 }
