@@ -17,6 +17,12 @@ public class TtsClientService : ITtsClientService
     private readonly IHubContext<OrchestratorHub> _hub;
     private readonly OrchestratorEventBus _eventBus;
 
+    private static readonly JsonSerializerOptions s_jsonOptions = new()
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+    };
+
     public TtsClientService(HttpClient httpClient, IConfiguration config, AppDbContext context, IHubContext<OrchestratorHub> hub, OrchestratorEventBus eventBus)
     {
         _httpClient = httpClient;
@@ -117,12 +123,6 @@ public class TtsClientService : ITtsClientService
 
     public static string BuildRequestJson(TtsRequest request)
     {
-        var options = new JsonSerializerOptions
-        {
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
-        };
-
         var body = new Dictionary<string, object?>
         {
             ["text"] = request.Text,
@@ -135,7 +135,7 @@ public class TtsClientService : ITtsClientService
             body["reference_id"] = request.ReferenceId;
         }
 
-        return JsonSerializer.Serialize(body, options);
+        return JsonSerializer.Serialize(body, s_jsonOptions);
     }
 
     public static string GenerateOutputFileName(string format)
