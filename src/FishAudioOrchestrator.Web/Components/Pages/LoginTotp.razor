@@ -56,6 +56,7 @@
 </div>
 
 <form id="signin-form" method="post" action="/api/auth/signin" style="display:none;">
+    <AntiforgeryToken />
     <input type="hidden" name="token" id="signin-token" />
     <input type="hidden" name="returnUrl" id="signin-return-url" />
 </form>

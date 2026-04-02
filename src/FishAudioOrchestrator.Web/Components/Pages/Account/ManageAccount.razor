@@ -47,6 +47,7 @@
                 <div class="card-body">
                     <h5>Session</h5>
                     <form method="post" action="/api/auth/signout">
+                        <AntiforgeryToken />
                         <button type="submit" class="btn btn-outline-danger">Sign Out</button>
                     </form>
                 </div>
