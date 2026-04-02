@@ -28,8 +28,13 @@
             {
                 @* --- Step 1: Data Directories --- *@
                 <h5>Data Storage</h5>
-                <p class="text-muted">Fish Audio Orchestrator stores model checkpoints, reference voice samples, and generated audio files in separate directories. Choose where to store each. The directories will be created if they don't exist.</p>
+                <p class="text-muted">Fish Audio Orchestrator stores its database, model checkpoints, reference voice samples, and generated audio files. Choose where to store each. Directories will be created if they don't exist.</p>
 
+                <div class="mb-3">
+                    <label class="form-label">Database File</label>
+                    <input class="form-control border-secondary" @bind="_databasePath" />
+                    <small class="text-muted">SQLite database file path (e.g. fishorch.db)</small>
+                </div>
                 <div class="mb-3">
                     <label class="form-label">Checkpoints Directory</label>
                     <input class="form-control border-secondary" @bind="_checkpointsDir" />
@@ -319,6 +324,7 @@
                 else
                 {
                     <div class="alert alert-success">
+                        <p><strong>Database:</strong> @Path.GetFullPath(_databasePath)</p>
                         <p><strong>Data directories:</strong> Configured</p>
                         <p><strong>Model:</strong> @(_modelSkipped ? "Skipped (download manually before deploying)" : "Downloaded")</p>
                         <p><strong>Docker image:</strong> @(DownloadSvc.DockerPullCompleted || _dockerImagePresent ? "Available" : "Not downloaded")</p>
@@ -361,6 +367,7 @@
     private bool _loading;
 
     // Step 1
+    private string _databasePath = @"C:\MyFishAudioProj\fishorch.db";
     private string _checkpointsDir = @"C:\MyFishAudioProj\Checkpoints";
     private string _referencesDir = @"C:\MyFishAudioProj\References";
     private string _outputDir = @"C:\MyFishAudioProj\Output";
@@ -420,12 +427,38 @@
     {
         _error = null;
 
-        if (string.IsNullOrWhiteSpace(_checkpointsDir) ||
+        if (string.IsNullOrWhiteSpace(_databasePath) ||
+            string.IsNullOrWhiteSpace(_checkpointsDir) ||
             string.IsNullOrWhiteSpace(_referencesDir) ||
             string.IsNullOrWhiteSpace(_outputDir))
         {
-            _error = "All three directories are required.";
+            _error = "All fields are required.";
             return;
+        }
+
+        _databasePath = _databasePath.Trim();
+
+        // Validate database path has a filename
+        if (string.IsNullOrWhiteSpace(Path.GetFileName(_databasePath)))
+        {
+            _error = "Database path must include a filename (e.g. fishorch.db).";
+            return;
+        }
+
+        // Ensure the database directory exists
+        var dbDir = Path.GetDirectoryName(Path.GetFullPath(_databasePath));
+        if (dbDir is not null)
+        {
+            try
+            {
+                if (!Directory.Exists(dbDir))
+                    Directory.CreateDirectory(dbDir);
+            }
+            catch (Exception ex)
+            {
+                _error = $"Could not create database directory '{dbDir}': {ex.Message}";
+                return;
+            }
         }
 
         var dirs = new[] { _checkpointsDir.Trim(), _referencesDir.Trim(), _outputDir.Trim() };
@@ -588,6 +621,7 @@
         try
         {
             await SettingsSvc.SaveSettingsAsync(
+                _databasePath,
                 _checkpointsDir, _referencesDir, _outputDir,
                 _portStart, _portEnd,
                 string.IsNullOrWhiteSpace(_domain) ? null : _domain.Trim(),
@@ -672,9 +706,7 @@
         {
             try
             {
-                var dataRoot = Config["FishOrchestrator:DataRoot"] ?? @"C:\MyFishAudioProj";
-                var dbPath = Path.Combine(dataRoot, "fishorch.db");
-                await SettingsSvc.EncryptDatabaseAsync(dbPath, _databaseKey.Trim());
+                await SettingsSvc.EncryptDatabaseAsync(Path.GetFullPath(_databasePath), _databaseKey.Trim());
             }
             catch (Exception ex)
             {

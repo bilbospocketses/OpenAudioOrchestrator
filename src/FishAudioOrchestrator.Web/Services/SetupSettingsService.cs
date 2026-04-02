@@ -29,6 +29,7 @@ public class SetupSettingsService
     }
 
     public async Task SaveSettingsAsync(
+        string databasePath,
         string checkpointsDir,
         string referencesDir,
         string outputDir,
@@ -46,8 +47,8 @@ public class SetupSettingsService
         var dataRoot = Path.GetDirectoryName(checkpointsDir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
                        ?? checkpointsDir;
 
-        // ConnectionStrings
-        root["ConnectionStrings"]!["Default"] = $"Data Source={Path.Combine(dataRoot, "fishorch.db")}";
+        // ConnectionStrings — use the user-specified database path
+        root["ConnectionStrings"]!["Default"] = $"Data Source={Path.GetFullPath(databasePath)}";
 
         // FishOrchestrator
         var fish = root["FishOrchestrator"]!;
