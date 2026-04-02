@@ -10,6 +10,9 @@ namespace FishAudioOrchestrator.Web;
 
 public static class StartupTasks
 {
+    // Default DB path used during initial setup before the user picks a location
+    private const string DefaultDbPath = @"C:\MyOpenAudioProj\fishorch.db";
+
     public static async Task RunAsync(WebApplication app)
     {
         await RunMigrationsAsync(app);
@@ -17,6 +20,7 @@ public static class StartupTasks
         await SeedAdminAsync(app);
         await EnsureDockerNetworkAsync(app);
         RestrictDatabaseFilePermissions(app);
+        CleanupOldDatabase(app);
     }
 
     private static async Task RunMigrationsAsync(WebApplication app)
@@ -104,6 +108,69 @@ public static class StartupTasks
         catch (Exception ex)
         {
             app.Logger.LogWarning(ex, "Could not restrict database file permissions for {Path}", dbPath);
+        }
+    }
+
+    /// <summary>
+    /// If the configured database path differs from the default setup location,
+    /// delete the leftover default DB files. This handles the case where the
+    /// Setup wizard copied the DB to a user-chosen path but couldn't delete
+    /// the original because EF Core held the file lock.
+    /// </summary>
+    private static void CleanupOldDatabase(WebApplication app)
+    {
+        var connectionString = app.Configuration.GetConnectionString("Default");
+        if (connectionString is null) return;
+
+        var dataSourcePrefix = "Data Source=";
+        var idx = connectionString.IndexOf(dataSourcePrefix, StringComparison.OrdinalIgnoreCase);
+        if (idx < 0) return;
+
+        var pathStart = idx + dataSourcePrefix.Length;
+        var semicolonIdx = connectionString.IndexOf(';', pathStart);
+        var configuredPath = Path.GetFullPath(semicolonIdx >= 0
+            ? connectionString[pathStart..semicolonIdx]
+            : connectionString[pathStart..]);
+
+        var defaultPath = Path.GetFullPath(DefaultDbPath);
+
+        // Only clean up if the configured path is different from the default
+        if (string.Equals(configuredPath, defaultPath, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        // Delete the default DB and its journal files if they exist
+        foreach (var file in new[] { defaultPath, defaultPath + "-wal", defaultPath + "-shm" })
+        {
+            if (File.Exists(file))
+            {
+                try
+                {
+                    File.Delete(file);
+                    app.Logger.LogInformation("Cleaned up old database file: {Path}", file);
+                }
+                catch (Exception ex)
+                {
+                    app.Logger.LogWarning(ex, "Could not delete old database file: {Path}", file);
+                }
+            }
+        }
+
+        // Remove the default directory if it's now empty
+        var defaultDir = Path.GetDirectoryName(defaultPath);
+        if (defaultDir is not null && Directory.Exists(defaultDir))
+        {
+            try
+            {
+                if (!Directory.EnumerateFileSystemEntries(defaultDir).Any())
+                {
+                    Directory.Delete(defaultDir);
+                    app.Logger.LogInformation("Cleaned up empty default directory: {Path}", defaultDir);
+                }
+            }
+            catch (Exception ex)
+            {
+                app.Logger.LogWarning(ex, "Could not delete default directory: {Path}", defaultDir);
+            }
         }
     }
 }
