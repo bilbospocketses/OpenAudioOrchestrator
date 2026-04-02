@@ -23,11 +23,6 @@
 **Description:** The Content-Security-Policy header includes `script-src 'self' 'unsafe-inline'`. While Blazor Server requires some inline scripting, `unsafe-inline` significantly weakens XSS protection. Any XSS vector (e.g., through improperly-encoded user content rendered in Razor) can execute arbitrary JavaScript.
 **Recommended fix:** Replace `'unsafe-inline'` with nonce-based or hash-based CSP for scripts. Blazor Server's `_framework/blazor.web.js` can use a nonce. If not feasible immediately, document this as an accepted risk.
 
-### SEC-04: Audio endpoints lack CSRF protection (antiforgery not enforced before mapping)
-**File:** `src/FishAudioOrchestrator.Web/Program.cs`, lines 198-199
-**Description:** `app.MapAudioEndpoints()` is called on line 198, but `app.UseAntiforgery()` is called on line 199 -- after the audio endpoints are mapped. While audio endpoints are GET-only (read operations) and thus not CSRF targets, this ordering means the antiforgery middleware may not apply to them. More importantly, if any POST endpoints were added to `MapAudioEndpoints` in the future, they would lack CSRF protection by default.
-**Recommended fix:** Move `app.UseAntiforgery()` before `app.MapAudioEndpoints()`, or add a comment explaining the ordering is intentional for GET-only endpoints.
-
 ---
 
 ## Medium Findings
@@ -54,8 +49,8 @@
 
 ### BUG-05: `GpuMetricsParser.CollectAsync` reads stdout before `WaitForExitAsync`
 **File:** `src/FishAudioOrchestrator.Web/Services/GpuMetricsParser.cs`, lines 36-41
-**Description:** `ReadToEndAsync()` is called before `WaitForExitAsync()`. If the process produces large output, `ReadToEndAsync` could complete but the process might still be running. More importantly, the timeout CTS is applied only to `WaitForExitAsync` but not to `ReadToEndAsync`, so if nvidia-smi hangs writing to stdout, the method blocks indefinitely.
-**Recommended fix:** Apply the cancellation token to `ReadToEndAsync` as well, or use `process.WaitForExitAsync(cts.Token)` first with a timeout, then read.
+**Description:** `ReadToEndAsync()` is called before `WaitForExitAsync()`, and crucially it is called with no cancellation token at all. The timeout CTS is only scoped to the subsequent `WaitForExitAsync` call. This means if nvidia-smi hangs writing to stdout, `ReadToEndAsync` will block indefinitely — the timeout never fires because the CTS-guarded `WaitForExitAsync` is never reached.
+**Recommended fix:** Pass the cancellation token to `ReadToEndAsync` as well (e.g., `ReadToEndAsync(cts.Token)`), ensuring the read is also subject to the timeout. Alternatively, restructure to call `WaitForExitAsync(cts.Token)` first and read stdout only after the process exits.
 
 ### SEC-05: `VoiceLibraryService.AddVoiceAsync` does not validate `voiceId` for path traversal
 **File:** `src/FishAudioOrchestrator.Web/Services/VoiceLibraryService.cs`, lines 22-45
@@ -86,6 +81,21 @@
 **File:** `src/FishAudioOrchestrator.Web/Components/Pages/Account/ManageAccount.razor`, lines 49-51
 **Description:** Same issue as BUG-07: the signout form is a plain HTML `<form method="post">` without an antiforgery token.
 **Recommended fix:** Add the antiforgery token to the form or use `EditForm`.
+
+### BUG-09: `Program.cs` silently falls back to using encrypted DatabaseKey as plaintext password
+**File:** `src/FishAudioOrchestrator.Web/Program.cs`, lines 87-89
+**Description:** When Data Protection cannot decrypt the `DatabaseKey` configuration value, the code silently appends the raw (encrypted) value as a plaintext password: `connectionString += $";Password={encryptedDbKey}"`. If DP keys are lost or rotated, the application will silently attempt to connect with a garbled password, making the failure hard to diagnose. Worse, the encrypted blob is logged or exposed at the connection-string level, hinting at the key-management approach.
+**Recommended fix:** Log an error-level message on decrypt failure and either fail fast (throw, preventing startup) or clearly surface the fallback so operators are not blindsided by a silent misconfiguration.
+
+### SEC-04: Audio endpoints mapped before `UseAntiforgery()` — future-proofing gap
+**File:** `src/FishAudioOrchestrator.Web/Program.cs`, lines 198-199
+**Description:** `app.MapAudioEndpoints()` is called on line 198, but `app.UseAntiforgery()` is called on line 199 — after the audio endpoints are mapped. Because all audio endpoints are currently GET-only (read operations), there is no actual CSRF exposure today. The concern is forward-looking: if any POST endpoints are added to `MapAudioEndpoints` in the future, they would lack CSRF protection by default.
+**Recommended fix:** Move `app.UseAntiforgery()` before `app.MapAudioEndpoints()`, or add a comment explaining the ordering is intentional and safe only for GET-only endpoints.
+
+### SEC-08: `DockerOrchestratorService` passes `ContainerId` to Docker API without format validation
+**File:** `src/FishAudioOrchestrator.Web/Services/DockerOrchestratorService.cs`
+**Description:** `DockerOrchestratorService` passes `profile.ContainerId` directly to `StopContainerAsync` and `RemoveContainerAsync` without validating that it conforms to the expected Docker container ID format (`^[a-f0-9]{12,64}$`). This contrasts with `TtsJobProcessor`, which validates container IDs with that regex before use. The `ContainerId` originates from the database (seeded from Docker API responses), so the practical risk is low. However, it is a defense-in-depth gap: a corrupted or injected database record could cause unintended Docker operations.
+**Recommended fix:** Add container ID format validation in `DockerOrchestratorService` (matching the regex already used in `TtsJobProcessor`) before passing IDs to Docker SDK calls.
 
 ---
 
@@ -151,18 +161,23 @@
 **Description:** `UpdateDestination` and `ClearDestination` read `_cts`, create a new one, swap it, then cancel and dispose the old one. If two calls race, `oldCts` could be the same object for both, leading to double-dispose. While `CancellationTokenSource.Dispose` is documented as safe to call multiple times, the sequence `Cancel()` then `Dispose()` on an already-disposed CTS will throw `ObjectDisposedException`.
 **Recommended fix:** Add a lock around the swap-and-cancel sequence, or use `Interlocked.Exchange` and handle the disposal safely.
 
+### QUAL-13: `TtsClientService.GenerateAsync` appears to be dead code
+**File:** `src/FishAudioOrchestrator.Web/Services/TtsClientService.cs`
+**Description:** No Razor page or endpoint appears to call `TtsClientService.GenerateAsync`. The TTS Playground submits jobs via `TtsJobProcessor`, which invokes TTS through docker exec rather than through `TtsClientService`. Only `GetHealthAsync` is actively used from `TtsClientService`. The `GenerateAsync` method is a full code path — including the infinite-timeout `HttpClient` noted in QUAL-10 — that may never execute in practice. Its presence can mislead maintainers into thinking it is an active code path.
+**Recommended fix:** Confirm whether `GenerateAsync` is intentionally kept for future use or emergency fallback. If dead, remove it to reduce maintenance surface. If kept, mark it with a comment and address the infinite-timeout issue (QUAL-10).
+
 ---
 
 ## Summary
 
 | Severity | Count |
 |----------|-------|
-| Critical | 4     |
-| Medium   | 8     |
-| Low      | 12    |
+| Critical | 3     |
+| Medium   | 10    |
+| Low      | 13    |
 
 **Key themes:**
 - The prior security audit (874c80d) addressed most obvious vulnerabilities well -- path traversal checks, container ID validation, rate limiting, session fixation defense, and input validation are all present.
-- The remaining critical issues center on the GET-based signin endpoint (SEC-01), incomplete CSP (SEC-03), and defense-in-depth gaps (SEC-02, SEC-04).
+- The remaining critical issues center on the GET-based signin endpoint (SEC-01), incomplete CSP (SEC-03), and the container ID validation gap in the SignalR hub (SEC-02).
 - Medium issues are primarily race conditions and cross-context EF Core usage in Blazor components.
 - Low issues are code quality improvements (null safety, disposal patterns, caching).
