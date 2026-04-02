@@ -245,7 +245,12 @@ input[type="file"].form-control::file-selector-button {
 }
 
 input[type="file"].form-control:hover::file-selector-button {
-    background-color: var(--bg-surface);
+    background-color: #4a4a4a;
+    color: var(--text-primary);
+}
+
+[data-theme="light"] input[type="file"].form-control:hover::file-selector-button {
+    background-color: #ddd;
     color: var(--text-primary);
 }
 
