@@ -25,6 +25,23 @@ public static class StartupTasks
 
     private static async Task RunMigrationsAsync(WebApplication app)
     {
+        // Ensure the database directory exists before SQLite tries to create the file
+        var connectionString = app.Configuration.GetConnectionString("Default");
+        if (connectionString is not null)
+        {
+            var prefix = "Data Source=";
+            var idx = connectionString.IndexOf(prefix, StringComparison.OrdinalIgnoreCase);
+            if (idx >= 0)
+            {
+                var pathStart = idx + prefix.Length;
+                var semicolonIdx = connectionString.IndexOf(';', pathStart);
+                var dbPath = semicolonIdx >= 0 ? connectionString[pathStart..semicolonIdx] : connectionString[pathStart..];
+                var dbDir = Path.GetDirectoryName(Path.GetFullPath(dbPath));
+                if (dbDir is not null && !Directory.Exists(dbDir))
+                    Directory.CreateDirectory(dbDir);
+            }
+        }
+
         using var scope = app.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         await db.Database.MigrateAsync();
