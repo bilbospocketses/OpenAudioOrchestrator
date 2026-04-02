@@ -207,8 +207,10 @@ app.UseMiddleware<SetupGuardMiddleware>();
 app.UseMiddleware<PostLoginRedirectMiddleware>();
 
 // Endpoint mapping
-app.MapAudioEndpoints();
+// UseAntiforgery() MUST come before any endpoint mapping so that all mapped
+// endpoints (including future POST endpoints in MapAudioEndpoints) are covered.
 app.UseAntiforgery();
+app.MapAudioEndpoints();
 app.MapReverseProxy().RequireAuthorization();
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
