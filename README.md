@@ -27,8 +27,9 @@ Fish Audio Orchestrator runs locally on Windows (Linux testing and instructions 
 - **Role-based access control** — Admin (full access) and User (TTS, voice browsing, own history)
 - **Authenticated file serving** — audio output and reference files served through authorized endpoints with canonical path traversal protection
 - **Database encryption** — optional SQLCipher at-rest encryption configured during setup; encryption key protected by ASP.NET Data Protection API; database file permissions automatically restricted to the app user
+- **Light/dark theme** — per-user theme preference stored in the database; neutral grey dark theme and clean white light theme; instant toggle in the navbar
 - **Security headers** — CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy
-- **First-run setup wizard** — 7-step guided installer covering data directories, model download, Docker image pull, server configuration (including database encryption), admin account creation, and TOTP enrollment
+- **First-run setup wizard** — 7-step guided installer covering database location, data directories, model download, Docker image pull, server configuration (including database encryption), admin account creation, and TOTP enrollment
 - **HTTPS** — optional automatic certificate provisioning via Let's Encrypt (ports 80/443)
 - **API gateway** — YARP reverse proxy for the Fish Speech TTS API
 - **Health monitoring** — periodic container health checks; uses Docker container status during active TTS generation to avoid false errors
@@ -89,9 +90,9 @@ Most settings are configured automatically by the setup wizard. For advanced use
 
 | Key | Description | Default |
 |-----|-------------|---------|
-| `ConnectionStrings:Default` | SQLite database path | `C:\MyFishAudioProj\fishorch.db` |
+| `ConnectionStrings:Default` | SQLite database path | `C:\MyOpenAudioProj\fishorch.db` |
 | `FishOrchestrator:DockerEndpoint` | Docker API endpoint | `npipe://./pipe/docker_engine` |
-| `FishOrchestrator:DataRoot` | Root directory for data files | `C:\MyFishAudioProj` |
+| `FishOrchestrator:DataRoot` | Root directory for data files | `C:\MyOpenAudioProj` |
 | `FishOrchestrator:PortRange:Start` | Start of container port range | `9001` |
 | `FishOrchestrator:PortRange:End` | End of container port range | `9099` |
 | `FishOrchestrator:DefaultImageTag` | Default Fish Speech Docker image | `fishaudio/fish-speech:server-cuda-v2.0.0-beta` |
@@ -109,7 +110,7 @@ For automated deployments, set `FishOrchestrator__AdminUser` and `FishOrchestrat
 
 ## Architecture
 
-- **Blazor Server** (.NET 9) — interactive server-side UI with dark theme
+- **Blazor Server** (.NET 9) — interactive server-side UI with light/dark theme toggle (per-user preference)
 - **SQLite** (EF Core) — model profiles, voice library, generation logs, TTS job queue, Identity tables; optional SQLCipher at-rest encryption
 - **Docker.DotNet** — container lifecycle management and exec API for TTS generation (no shell-out)
 - **docker exec (SDK)** — TTS generation runs inside the container via Docker SDK exec, writing output to mounted volume; survives app restarts

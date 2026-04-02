@@ -6,7 +6,72 @@ Design specs and implementation plans in `superpowers/specs/` and `superpowers/p
 
 ---
 
-## 2026-04-01 — Security & Code Audit
+## 2026-04-01 — Codebase Audit, Theme System & Wizard Improvements
+
+### Theme System
+- **Light/dark theme toggle** — per-user preference stored in database via new `ThemePreference` column on `AppUser`
+- **CSS custom properties** — entire stylesheet converted from hardcoded colors to `[data-theme]` variable system; dark theme uses neutral greys (all blue removed), light theme is clean white
+- **Navbar toggle** — instant theme switch via JS interop with async DB persistence; correct theme rendered on first paint (no flash)
+- **GET/POST `/api/auth/theme`** — API endpoints for theme preference
+
+### Audit Fixes (29 findings)
+
+#### Critical
+- **`/api/auth/signin` converted from GET to POST** with rate limiting; token moved from query param to form body; LoginTotp uses dedicated JS function instead of `eval()`
+- **SignalR hub container ID validation** — shared `ContainerIdValidator` regex applied in hub, log service, and orchestrator service
+- **CSP tightened** — added `connect-src`, `frame-ancestors`, `base-uri`, `form-action`; `cdn.jsdelivr.net` added to `style-src` for Bootstrap CDN; documented `unsafe-inline` requirement for Blazor
+
+#### Medium
+- **SetupGuardMiddleware** — benign race condition fixed with `Interlocked.Exchange`
+- **TtsJobProcessor** — static `SemaphoreSlim` replaced with injectable `TtsJobSignal` singleton for test isolation
+- **Dashboard RemoveModel** — fixed detached entity across DbContexts; orchestrator now loads fresh from tracked context
+- **ContainerLogService** — TOCTOU race in unsubscribe methods fixed; both subscriber types checked atomically under lock
+- **GpuMetricsParser** — cancellation token now applied to `ReadToEndAsync` (was missing)
+- **HealthMonitorService** — `OperationCanceledException` from `Task.Delay` now caught for clean shutdown
+- **Antiforgery tokens** — added `<AntiforgeryToken />` to login, signout, and TOTP signin forms
+- **DatabaseKey fallback** — improved logging with `Console.Error.WriteLine` for plaintext fallback
+- **Audio endpoint ordering** — `UseAntiforgery()` moved before `MapAudioEndpoints()`
+- **VoiceLibraryService** — path traversal validation added to `AddVoiceAsync` and `DeleteVoiceAsync`
+- **SetupDownloadService** — refactored to use `ProcessStartInfo.ArgumentList` (fixed latent bugs in git lfs and docker version commands)
+- **Cookie SecurePolicy** — conditional `Always` when HTTPS domain is configured, `SameAsRequest` for localhost
+- **DockerOrchestratorService** — container ID format validation added via shared `ContainerIdValidator`
+
+#### Low
+- **JsonSerializerOptions** cached as static readonly in `TtsClientService`
+- **StringHelpers.Truncate** — null handling added
+- **Bootstrap CDN** — SRI integrity hash added
+- **NavMenu** — `StateHasChanged` guarded against `ObjectDisposedException`
+- **MainLayout toast** — fire-and-forget `Task.Run` replaced with `CancellationTokenSource` disposal guard
+- **Deploy.razor timer** — disposal guard added
+- **GenerationHistory deletion** — path traversal validation added
+- **Setup.razor** — synchronous `Users.Any()` replaced with `AnyAsync()`
+- **TtsPlayground CancelJob** — now checks fresh status and delegates to `TtsJobProcessor.CancelJobAsync` for processing jobs
+- **HttpClient timeout** — set to 5 hours (was infinite)
+- **ContainerConfigService** — Docker container name regex validation on `profile.Name`
+- **FishProxyConfigProvider** — lock added to prevent CTS double-dispose race
+- **TtsClientService.GenerateAsync** — dead code removed (only `GetHealthAsync` retained)
+
+### Setup Wizard Improvements
+- **Database file path** — user can now choose where to store the database (previously derived implicitly)
+- **WAL checkpoint** — flush before copying DB to user-chosen path (prevents empty-DB-on-restart)
+- **Data Protection keys** — stored in app directory (`ContentRootPath/.dp-keys`) instead of `DataRoot` (prevents key loss when DataRoot changes)
+- **DPAPI encryption** — DP keys encrypted at rest on Windows
+- **Database encryption** — uses copy+`sqlcipher_export` approach to avoid EF Core file lock
+- **Cleanup** — leftover default-location DB files deleted on next startup
+- **DB directory creation** — ensured before EF Core migrations run
+- **`StateHasChanged`** — added after async pre-checks so "already present" status renders
+
+### Other
+- **TTS timeout** — increased from 2 hours to 5 hours (curl `--max-time`, `JobTimeout`, HttpClient)
+- **Default paths** — renamed from `MyFishAudioProj` to `MyOpenAudioProj`
+- **File input styling** — `::file-selector-button` themed for dark/light
+- **`btn-outline-light`** — restyled with theme variables for both themes
+- **SQLite DateTimeOffset** — `OrderBy`/`Where` on `CreatedAt` replaced with `Id` for EF Core 9 compatibility
+- **README** — independence disclaimer added
+
+---
+
+## 2026-04-01 — Security & Code Audit (Prior Pass)
 
 ### Critical Fixes
 - **Command injection eliminated (TtsJobProcessor):** Replaced all `Process.Start("docker", ...)` shell-outs with Docker.DotNet SDK exec API (`ExecCreateContainerAsync` + `StartAndAttachContainerExecAsync`). Added container ID validation regex (`^[a-f0-9]{12,64}$`) as defense-in-depth.
