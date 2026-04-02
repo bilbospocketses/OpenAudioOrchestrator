@@ -82,9 +82,12 @@ if (!string.IsNullOrWhiteSpace(encryptedDbKey))
     }
     catch (Exception ex)
     {
-        // If decryption fails (e.g. key was stored in plain text before migration),
-        // try using the value directly as a fallback
-        Console.WriteLine($"Warning: Could not decrypt DatabaseKey ({ex.Message}). Trying as plain text.");
+        // Fallback: the key may have been stored as plaintext before DP encryption was introduced.
+        // Log prominently so operators notice if this happens unexpectedly.
+        var message = $"WARNING: Could not decrypt DatabaseKey ({ex.Message}). " +
+                      "Using value as plaintext. If the database fails to open, " +
+                      "the Data Protection keys may have been lost or rotated.";
+        Console.Error.WriteLine(message);
         connectionString += $";Password={encryptedDbKey}";
     }
 }
