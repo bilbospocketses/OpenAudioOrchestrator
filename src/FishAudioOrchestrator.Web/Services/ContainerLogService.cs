@@ -54,7 +54,8 @@ public class ContainerLogService : IContainerLogService
         lock (stream.Lock)
         {
             stream.Subscribers.Remove(connectionId);
-            shouldCancel = stream.Subscribers.Count == 0;
+            shouldCancel = stream.Subscribers.Count == 0
+                && !HasCallbackSubscribers(containerId);
         }
 
         if (shouldCancel)
@@ -74,7 +75,8 @@ public class ContainerLogService : IContainerLogService
             lock (kvp.Value.Lock)
             {
                 kvp.Value.Subscribers.Remove(connectionId);
-                shouldCancel = kvp.Value.Subscribers.Count == 0;
+                shouldCancel = kvp.Value.Subscribers.Count == 0
+                    && !HasCallbackSubscribers(kvp.Key);
             }
 
             if (shouldCancel)
@@ -141,12 +143,20 @@ public class ContainerLogService : IContainerLogService
             }
         }
 
-        // If no subscribers of either kind remain, stop the reader
-        if (!HasSubscribers(containerId) && !HasCallbackSubscribers(containerId))
+        // Check if we should stop the reader — must check both subscriber types under the stream's lock
+        if (_streams.TryGetValue(containerId, out var stream))
         {
-            if (_streams.TryRemove(containerId, out var stream))
+            bool shouldCancel;
+            lock (stream.Lock)
+            {
+                shouldCancel = stream.Subscribers.Count == 0
+                    && !HasCallbackSubscribers(containerId);
+            }
+
+            if (shouldCancel)
             {
                 stream.Cts?.Cancel();
+                _streams.TryRemove(containerId, out _);
             }
         }
     }

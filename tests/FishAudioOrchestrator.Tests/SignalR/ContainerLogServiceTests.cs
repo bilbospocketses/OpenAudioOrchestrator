@@ -106,4 +106,83 @@ public class ContainerLogServiceTests
         Assert.False(service.HasSubscribers(ContainerId1));
         Assert.False(service.HasSubscribers(ContainerId2));
     }
+
+    // BUG-04 regression tests: unsubscribe methods must not cancel the stream
+    // when the other subscriber type still has active subscribers.
+
+    [Fact]
+    public async Task UnsubscribeAsync_DoesNotCancelStream_WhenCallbackSubscriberStillPresent()
+    {
+        var (service, _) = CreateService();
+        Action<LogLineEvent> callback = _ => { };
+
+        await service.SubscribeAsync(ContainerId1, "conn-a");
+        service.SubscribeCallback(ContainerId1, "sub-1", callback);
+
+        // Remove the SignalR subscriber — callback subscriber is still active.
+        await service.UnsubscribeAsync(ContainerId1, "conn-a");
+
+        // The callback subscriber keeps HasSubscribers true.
+        Assert.True(service.HasSubscribers(ContainerId1));
+    }
+
+    [Fact]
+    public async Task UnsubscribeAllAsync_DoesNotCancelStream_WhenCallbackSubscriberStillPresent()
+    {
+        var (service, _) = CreateService();
+        Action<LogLineEvent> callback = _ => { };
+
+        await service.SubscribeAsync(ContainerId1, "conn-a");
+        service.SubscribeCallback(ContainerId1, "sub-1", callback);
+
+        // Remove the SignalR subscriber via UnsubscribeAllAsync — callback subscriber is still active.
+        await service.UnsubscribeAllAsync("conn-a");
+
+        Assert.True(service.HasSubscribers(ContainerId1));
+    }
+
+    [Fact]
+    public void UnsubscribeCallback_DoesNotCancelStream_WhenSignalRSubscriberStillPresent()
+    {
+        var (service, _) = CreateService();
+        Action<LogLineEvent> callback = _ => { };
+
+        service.SubscribeCallback(ContainerId1, "sub-1", callback);
+        // Manually subscribe a SignalR connection (SubscribeAsync without Docker = task is started but ignored here)
+        _ = service.SubscribeAsync(ContainerId1, "conn-a");
+
+        // Remove the callback subscriber — SignalR subscriber is still active.
+        service.UnsubscribeCallback(ContainerId1, "sub-1");
+
+        Assert.True(service.HasSubscribers(ContainerId1));
+    }
+
+    [Fact]
+    public async Task UnsubscribeAsync_CancelsStream_WhenBothSubscriberTypesGone()
+    {
+        var (service, _) = CreateService();
+        Action<LogLineEvent> callback = _ => { };
+
+        await service.SubscribeAsync(ContainerId1, "conn-a");
+        service.SubscribeCallback(ContainerId1, "sub-1", callback);
+
+        // Remove both subscriber types.
+        await service.UnsubscribeAsync(ContainerId1, "conn-a");
+        service.UnsubscribeCallback(ContainerId1, "sub-1");
+
+        Assert.False(service.HasSubscribers(ContainerId1));
+    }
+
+    [Fact]
+    public void UnsubscribeCallback_CancelsStream_WhenBothSubscriberTypesGone()
+    {
+        var (service, _) = CreateService();
+        Action<LogLineEvent> callback = _ => { };
+
+        service.SubscribeCallback(ContainerId1, "sub-1", callback);
+        // No SignalR subscribers — removing the sole callback subscriber must clear everything.
+        service.UnsubscribeCallback(ContainerId1, "sub-1");
+
+        Assert.False(service.HasSubscribers(ContainerId1));
+    }
 }
