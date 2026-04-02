@@ -6,7 +6,9 @@ namespace FishAudioOrchestrator.Web.Middleware;
 public class SetupGuardMiddleware
 {
     private readonly RequestDelegate _next;
-    private volatile bool _setupComplete;
+    // BUG-01: Use an int with Interlocked so the false→true transition is atomic.
+    // 0 = setup not complete, 1 = setup complete.
+    private int _setupComplete;
 
     public SetupGuardMiddleware(RequestDelegate next)
     {
@@ -28,18 +30,20 @@ public class SetupGuardMiddleware
             return;
         }
 
-        // Once users exist, cache the result — users don't un-exist
-        if (!_setupComplete)
+        // Once users exist, cache the result — users don't un-exist.
+        // Interlocked.Exchange ensures the false→true write is atomic and
+        // visible to all threads without a torn read.
+        if (Volatile.Read(ref _setupComplete) == 0)
         {
             var db = context.RequestServices.GetRequiredService<AppDbContext>();
             if (await db.Users.AnyAsync())
-                _setupComplete = true;
+                Interlocked.Exchange(ref _setupComplete, 1);
         }
 
         if (isSetupPath)
         {
             // Block setup page once users exist — prevents creating rogue admins
-            if (_setupComplete)
+            if (Volatile.Read(ref _setupComplete) == 1)
             {
                 context.Response.Redirect("/");
                 return;
@@ -48,7 +52,7 @@ public class SetupGuardMiddleware
             return;
         }
 
-        if (!_setupComplete)
+        if (Volatile.Read(ref _setupComplete) == 0)
         {
             context.Response.Redirect("/setup");
             return;
